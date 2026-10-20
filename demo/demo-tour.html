@@ -1,0 +1,248 @@
+<style>
+/* Guided tour bar, pinned to the bottom; uses the app's own tokens so it follows light and dark. */
+.wrap{padding-bottom:230px;}
+.tour{
+  position:fixed; left:0; right:0; bottom:0; z-index:30;
+  padding-block:14px calc(14px + env(safe-area-inset-bottom, 0px));
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  background:color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  border-top:1px solid var(--line);
+  box-shadow:0 -8px 24px rgba(10, 20, 25, .08);
+}
+.tour-progress{position:absolute; left:0; right:0; top:-1px; height:3px; background:var(--line);}
+.tour-progress span{display:block; height:100%; width:0; background:var(--accent); transition:width .4s ease;}
+.tour-inner{max-width:1040px; margin:0 auto; display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:10px 24px; align-items:center;}
+.tour-body{min-width:0; display:flex; flex-direction:column; gap:3px;}
+.tour-step{margin:0; font-size:.75rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); font-variant-numeric:tabular-nums;}
+.tour-title{margin:0; font-size:1.1rem; font-weight:700; text-wrap:balance;}
+.tour-text{margin:0; font-size:.95rem; line-height:1.45; color:var(--muted); max-width:70ch;}
+.tour-controls{display:flex; align-items:center; gap:8px;}
+.tbtn{
+  display:inline-grid; place-items:center; width:42px; height:42px; padding:0; border-radius:50%; cursor:pointer;
+  background:var(--surface-2); color:var(--text); border:1px solid var(--line);
+}
+.tbtn svg{width:18px; height:18px;}
+.tbtn.primary{width:50px; height:50px; background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
+.tbtn.primary svg{width:20px; height:20px;}
+.tbtn:disabled{opacity:.4; cursor:default;}
+.tbtn:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+.tour-restart{
+  font:inherit; font-size:.88rem; font-weight:600; padding:8px 12px; border-radius:9px; cursor:pointer;
+  background:transparent; color:var(--muted); border:1px solid transparent;
+}
+.tour-restart:hover{color:var(--text); border-color:var(--line);}
+.tour-focus{outline:3px solid var(--accent) !important; outline-offset:6px; border-radius:16px;}
+.demo-ribbon{
+  display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px;
+  background:var(--accent-soft); color:var(--accent); font-size:.78rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+}
+@media (max-width:640px){
+  .wrap{padding-bottom:300px;}
+  .tour-inner{grid-template-columns:1fr;}
+  .tour-controls{justify-content:space-between;}
+}
+@media (prefers-reduced-motion: reduce){ .tour-progress span{transition:none;} }
+</style>
+
+<aside class="tour" id="tour" aria-label="Guided demo">
+  <div class="tour-progress" aria-hidden="true"><span id="tour-bar"></span></div>
+  <div class="tour-inner">
+    <div class="tour-body">
+      <p class="tour-step" id="tour-step">Step 1 of 11</p>
+      <h2 class="tour-title" id="tour-title">Meet K631 Live</h2>
+      <p class="tour-text" id="tour-text" aria-live="polite">Loading the demo…</p>
+    </div>
+    <div class="tour-controls">
+      <button type="button" class="tbtn" id="tour-prev" aria-label="Previous step"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <button type="button" class="tbtn primary" id="tour-play" aria-label="Pause"><svg viewBox="0 0 24 24" id="tour-play-icon"><path d="M9 6v12M15 6v12"/></svg></button>
+      <button type="button" class="tbtn" id="tour-next" aria-label="Next step"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+      <button type="button" class="tour-restart" id="tour-restart">Restart</button>
+    </div>
+  </div>
+</aside>
+
+<script>
+// Guided tour: drives the real K631 Live page (against the simulated keyboard in demo-shim.js).
+(() => {
+  const $ = id => document.getElementById(id);
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let index = 0, token = 0, playing = !reduceMotion, stepDone = false, tookOver = false;
+  const ringed = new Set();
+  class Cancelled extends Error {}
+
+  // Be honest in the header: this is the demo keyboard, not a real one.
+  const appSetStatus = setStatus;
+  setStatus = (state, text) => appSetStatus(state, state === 'live' ? 'Demo · simulated K631' : text);
+  document.querySelector('.brand small').textContent = 'Interactive demo · no keyboard needed';
+
+  // ---- Helpers that act on the page like a person would ----
+  const scrollMode = reduceMotion ? 'auto' : 'smooth';
+  function ring(el){
+    if (!el) return;
+    el.classList.add('tour-focus');
+    ringed.add(el);
+    el.scrollIntoView({ behavior: scrollMode, block: 'center' });
+  }
+  const tab = name => $('tab-' + name).click();
+  function choose(name, value){
+    const input = document.querySelector('input[name="' + name + '"][value="' + value + '"]');
+    if (!input || input.disabled) return;
+    input.checked = true;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  async function musicOff(){ if (music.on) await setMusic(false); }
+  async function type(codes, w){
+    for (const code of codes){ await demoKeyboard.press(code); await w(110); }
+  }
+  const top = () => window.scrollTo({ top: 0, behavior: scrollMode });
+
+  const STEPS = [
+    { title: 'Meet K631 Live',
+      text: 'A Windows companion for the Redragon K631 RGB PRO. This demo runs the real app against a simulated keyboard, so nothing needs installing.',
+      run: async w => { tab('lighting'); top(); await w(600); ring(document.querySelector('.case')); await w(5500); } },
+    { title: 'Every key, live',
+      text: 'Each key you press lights up on the drawing, even while the window is in the background. Fn combinations light Fn too: Fn + 1 sends F1.',
+      run: async w => {
+        await musicOff(); tab('lighting'); top(); await w(500);
+        ring(document.querySelector('.case'));
+        await type(['KeyK', 'Digit6', 'Digit3', 'Digit1', 'Space', 'KeyL', 'KeyI', 'KeyV', 'KeyE'], w);
+        await w(700); await demoKeyboard.press('F1', 600); await w(500);
+        await demoKeyboard.press('AudioVolumeUp', 600); await w(2600);
+      } },
+    { title: '21 built-in effects',
+      text: 'Click a tile and the keyboard switches at once, while the drawing previews the effect. Here: Rainbow, Neon stream, Rotating storm.',
+      run: async w => {
+        await musicOff(); tab('lighting'); await w(300);
+        ring($('effects').closest('.card')); await w(900);
+        choose('effect', 3); await w(2800);
+        choose('effect', 11); await w(2800);
+        choose('effect', 18); await w(2800);
+      } },
+    { title: 'Brightness and speed',
+      text: 'Brightness has five steps from Off to 4, speed four from Slow to Fastest. Controls an effect doesn’t use are greyed out.',
+      run: async w => {
+        await musicOff(); tab('lighting'); choose('effect', 3); await w(900);
+        ring(document.querySelector('.settings')); await w(700);
+        choose('speed', 4); await w(1900);
+        choose('brightness', 1); await w(1700);
+        choose('brightness', 4); await w(1700);
+        choose('speed', 2); await w(1700);
+      } },
+    { title: 'Colours',
+      text: 'Pick one of the effect’s seven stored colours, any colour with +, or the rainbow button for Colourful.',
+      run: async w => {
+        await musicOff(); tab('lighting'); choose('effect', 1); await w(900);
+        ring($('color-field')); await w(700);
+        const cyan = document.querySelector('#palette .swatch[title="#00ffff"]');
+        if (cyan) cyan.click();
+        await w(2000);
+        $('color').value = '#ff8000'; $('color').dispatchEvent(new Event('change', { bubbles: true })); await w(2000);
+        if ($('colourful').getAttribute('aria-pressed') !== 'true') $('colourful').click();
+        await w(2200);
+      } },
+    { title: 'Music mode',
+      text: 'Turn on Music mode and the keys move to whatever the PC is playing. The real keyboard shows exactly the same frames as this drawing.',
+      run: async w => {
+        tab('lighting'); ring($('music-card')); await w(700);
+        if (!music.on) $('music-on').click();
+        await w(5000);
+      } },
+    { title: 'Five music styles',
+      text: 'Wave, Bars, Bloom, Stream and Pulse: the same five styles as the Redragon app, played here on a made-up 120 BPM song.',
+      run: async w => {
+        tab('lighting'); ring($('music-card'));
+        if (!music.on){ $('music-on').click(); await w(800); }
+        for (const style of ['bars', 'bloom', 'stream', 'pulse']){ choose('music-style', style); await w(3200); }
+      } },
+    { title: 'Music or effect, never both',
+      text: 'Picking an effect stops music mode and hands the keyboard back to that effect.',
+      run: async w => {
+        tab('lighting'); ring($('effects').closest('.card')); await w(800);
+        choose('effect', 18); await w(4000);
+      } },
+    { title: 'Your own layout',
+      text: 'Drag a key onto another to swap what it types, or click a key to set its Normal, Shift and Alt Gr characters.',
+      run: async w => {
+        await musicOff(); tab('layout'); await w(400);
+        ring($('layout-panel').querySelector('.card'));
+        if (!editing) setEditing(true);
+        await w(1200);
+        ring(document.querySelector('.case'));
+        byCode.KeyQ.el.classList.add('dragging'); byCode.KeyA.el.classList.add('drop-target');
+        await w(1000);
+        byCode.KeyQ.el.classList.remove('dragging'); byCode.KeyA.el.classList.remove('drop-target');
+        swapKeys('KeyQ', 'KeyA'); await w(2000);
+        swapKeys('KeyQ', 'KeyA');
+        openKeyEditor('Digit2'); await w(3400);
+        closeKeyEditor(); setEditing(false); await w(600);
+      } },
+    { title: 'A real Windows layout',
+      text: 'Export turns the layout into an installable Windows keyboard layout, built once with Microsoft Keyboard Layout Creator.',
+      run: async w => {
+        await musicOff(); tab('layout'); await w(400);
+        ring($('export-layout')); await w(900);
+        $('export-layout').click(); await w(4200);
+      } },
+    { title: 'That’s K631 Live',
+      text: 'Built by studying the K631’s own USB commands, with a safety check on every write. Restart the tour, or try the page yourself.',
+      run: async w => { tab('lighting'); top(); await w(400); ring(document.querySelector('.case')); await w(2500); } }
+  ];
+
+  // ---- Runner ----
+  function cleanup(){
+    ringed.forEach(el => el.classList.remove('tour-focus'));
+    ringed.clear();
+    if (editing && STEPS[index].title !== 'Your own layout') setEditing(false);
+  }
+
+  function render(){
+    $('tour-step').textContent = 'Step ' + (index + 1) + ' of ' + STEPS.length + (tookOver ? ' · paused while you explore' : '');
+    $('tour-title').textContent = STEPS[index].title;
+    $('tour-text').textContent = STEPS[index].text;
+    $('tour-bar').style.width = ((index + 1) / STEPS.length * 100) + '%';
+    $('tour-prev').disabled = index === 0;
+    $('tour-next').disabled = index === STEPS.length - 1;
+    $('tour-play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    $('tour-play-icon').innerHTML = playing ? '<path d="M9 6v12M15 6v12"/>' : '<path class="fill" d="M8 5l11 7-11 7z"/>';
+  }
+
+  async function go(i){
+    index = Math.max(0, Math.min(STEPS.length - 1, i));
+    const my = ++token;
+    stepDone = false;
+    cleanup();
+    render();
+    const wait = ms => new Promise((resolve, reject) => setTimeout(() => my === token ? resolve() : reject(new Cancelled()), ms));
+    try {
+      await STEPS[index].run(wait);
+      if (my !== token) return;
+      stepDone = true;
+      if (index === STEPS.length - 1){ playing = false; render(); }
+      else if (playing) go(index + 1);
+    } catch (e) {
+      if (!(e instanceof Cancelled)) console.error(e);
+    }
+  }
+
+  $('tour-prev').addEventListener('click', () => { tookOver = false; go(index - 1); });
+  $('tour-next').addEventListener('click', () => { tookOver = false; go(index + 1); });
+  $('tour-restart').addEventListener('click', () => { tookOver = false; playing = true; go(0); });
+  $('tour-play').addEventListener('click', () => {
+    tookOver = false;
+    playing = !playing;
+    render();
+    if (playing && stepDone) go(index === STEPS.length - 1 ? 0 : index + 1);
+  });
+
+  // When the viewer starts clicking around the app, the tour stops driving.
+  ['.dock', '.wrap'].forEach(sel => document.querySelector(sel).addEventListener('pointerdown', e => {
+    if (!e.isTrusted || !playing) return;
+    playing = false; tookOver = true; render();
+  }));
+
+  render();
+  setTimeout(() => go(0), 500);
+})();
+</script>

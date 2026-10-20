@@ -1,7 +1,18 @@
 # K631 Live
 
 Shows every key pressed on the Redragon K631 on the AZERTY 68-key layout, live,
-even while the page is in the background.
+even while the page is in the background. It also drives the keyboard's lighting, adds a music mode and lets
+you design your own Windows keyboard layout.
+
+## Demo
+
+[![K631 Live demo video](demo/contact-sheet.jpg)](demo/video.mp4)
+
+▶ **[Watch the demo video](demo/video.mp4)** (MP4, ~24 MB): live keys, the OBS overlay, lighting effects,
+music mode and the layout editor.
+
+There's also an interactive demo that runs in the browser with a simulated keyboard:
+open `demo/k631-live-demo.html`.
 
 ## Run
 
@@ -91,4 +102,9 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 
 This uses the C# compiler included with Windows, so no SDK is needed.
-# Redragon_K631RGB-PRO_Setup
+
+To rebuild the interactive demo after changing `web/index.html`:
+
+```
+powershell -ExecutionPolicy Bypass -File demo/build-demo.ps1
+```

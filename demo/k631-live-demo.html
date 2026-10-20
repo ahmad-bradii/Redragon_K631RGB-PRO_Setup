@@ -1,0 +1,2083 @@
+<title>K631 Live Demo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eef1f3;
+  --surface:#ffffff;
+  --surface-2:#f4f6f7;
+  --text:#1f2427;
+  --muted:#5d666b;
+  --line:#dce1e4;
+  --accent:#1d8c77;
+  --accent-ink:#ffffff;
+  --accent-soft:rgba(29,140,119,.12);
+  --danger:#c2412d;
+  --dot-live:#2f9e6e;
+  --dot-wait:#c98415;
+  --dot-off:#9aa3a8;
+  --shadow:0 1px 2px rgba(20,30,35,.06), 0 8px 24px rgba(20,30,35,.06);
+  color-scheme: light;
+  box-sizing:border-box;
+  /* One key unit. The keyboard is 16.6 units wide and the pinned dock about 6.5 units + 75px tall,
+     so it always fits the window width and never takes more than ~half of the height. */
+  --u: clamp(14px, min(calc((100vw - 40px) / 16.7), calc((50vh - 75px) / 6.5)), 60px);
+}
+html{scroll-padding-top:calc(var(--dock-h, 0px) + 12px);}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#131618; --surface:#1c2023; --surface-2:#24292d; --text:#e8ecee; --muted:#9aa4a9; --line:#30373c;
+    --accent:#3fbfa5; --accent-ink:#0b1d19; --accent-soft:rgba(63,191,165,.16); --danger:#f08a74;
+    --dot-live:#4cc795; --dot-wait:#e3a33c; --dot-off:#5f676c;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131618; --surface:#1c2023; --surface-2:#24292d; --text:#e8ecee; --muted:#9aa4a9; --line:#30373c;
+  --accent:#3fbfa5; --accent-ink:#0b1d19; --accent-soft:rgba(63,191,165,.16); --danger:#f08a74;
+  --dot-live:#4cc795; --dot-wait:#e3a33c; --dot-off:#5f676c;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+  color-scheme: dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+body{
+  margin:0; min-height:100vh;
+  background:var(--bg); color:var(--text);
+  font-family:"Barlow","Helvetica Neue",Arial,sans-serif;
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+button, input, select{font:inherit; color:inherit;}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+
+/* ---- Pinned dock: top bar + keyboard ---- */
+.dock{
+  position:sticky; top:0; z-index:10;
+  background:color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line);
+}
+.topbar{
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px 16px;
+  padding:calc(10px + env(safe-area-inset-top,0px)) 20px 4px;
+}
+.brand{display:flex; align-items:center; gap:10px; font-weight:700; font-size:1.1rem; letter-spacing:.01em;}
+.logo{
+  display:grid; place-items:center; width:32px; height:32px; border-radius:9px;
+  background:var(--accent); color:var(--accent-ink);
+}
+.logo svg{width:20px; height:20px;}
+.brand small{display:block; font-weight:500; font-size:.78rem; color:var(--muted); letter-spacing:0;}
+.top-right{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+.chip{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:6px 12px; border-radius:999px;
+  background:var(--surface); border:1px solid var(--line);
+  font-size:.88rem; color:var(--muted); white-space:nowrap;
+}
+.readout{color:var(--text); font-weight:600; min-width:9ch; justify-content:center; max-width:40vw; overflow:hidden; text-overflow:ellipsis;}
+.readout::before{content:"⌨"; font-weight:400; color:var(--muted);}
+.status .dot{width:8px; height:8px; border-radius:50%; background:var(--dot-off); flex:none;}
+.status[data-state="live"] .dot{background:var(--dot-live); box-shadow:0 0 0 3px color-mix(in srgb, var(--dot-live) 22%, transparent);}
+.status[data-state="wait"] .dot{background:var(--dot-wait);}
+
+/* ---- Page ---- */
+.wrap{display:flex; flex-direction:column; align-items:center; gap:18px; padding:8px 16px 40px;}
+.hint{display:none; margin:0; color:var(--muted); font-size:.85rem; text-align:center;}
+@media (max-width:640px) and (orientation:portrait){ .hint{display:block} }
+
+/* ---- Keyboard drawing ---- */
+.scroller{width:100%; overflow-x:auto; overflow-y:hidden; padding:calc(var(--u)*.9) 4px calc(var(--u)*.35);}
+.case{
+  position:relative; width:max-content; margin:0 auto;
+  padding:calc(var(--u)*.3);
+  border-radius:calc(var(--u)*.22);
+  background:linear-gradient(165deg,#eef0f1 0%,#d6dadc 55%,#c7ccce 100%);
+  border:1px solid #b3b9bc;
+  box-shadow:0 18px 40px rgba(10,20,25,.25), inset 0 1px 0 rgba(255,255,255,.8);
+}
+.cable{
+  position:absolute; left:calc(var(--u)*1.3); top:calc(var(--u)*-.32);
+  width:calc(var(--u)*.6); height:calc(var(--u)*.33);
+  background:#f7f7f7; border:1px solid #c9cdd0; border-bottom:none; border-radius:4px 4px 0 0;
+}
+.cable::before{
+  content:""; position:absolute; left:50%; bottom:100%; transform:translateX(-50%);
+  width:5px; height:calc(var(--u)*.6); background:#f7f7f7; border:1px solid #c9cdd0; border-bottom:none; border-radius:3px 3px 0 0;
+}
+.board{
+  position:relative; isolation:isolate;
+  width:calc(16 * var(--u)); height:calc(5 * var(--u));
+  background:#272b2d; border-radius:calc(var(--u)*.07);
+}
+/* Backlight preview: each key's LED glows around its keycap, like the real keyboard. */
+.key::before{
+  content:""; position:absolute; inset:calc(var(--u)*-.03); z-index:-1;
+  border-radius:calc(var(--u)*.15);
+  background:var(--led, transparent);
+  opacity:var(--led-a, 0);
+  filter:blur(calc(var(--u)*.07));
+}
+.key{
+  position:absolute;
+  left:calc(var(--x) * var(--u)); top:calc(var(--y) * var(--u));
+  width:calc(var(--w) * var(--u)); height:calc(var(--h) * var(--u));
+  padding:calc(var(--u)*.04);
+  cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation;
+  outline:none;
+}
+.cap{
+  position:relative; width:100%; height:100%;
+  border-radius:calc(var(--u)*.11);
+  background:var(--kc); color:var(--ink);
+  box-shadow: inset 0 calc(var(--u)*-.085) 0 var(--ks), inset 0 1px 0 rgba(255,255,255,.6), 0 1px 1px rgba(0,0,0,.45);
+  transition:transform .07s ease, filter .07s ease, box-shadow .07s ease;
+  user-select:none; -webkit-user-select:none;
+}
+.cap.teal{ --kc:#80d8c8; --ks:#5db9a8; --ink:#2b5d55; }
+.cap.white{ --kc:#f2f2ef; --ks:#cdcdc8; --ink:#4a4c4d; }
+.cap.down{
+  transform:translateY(calc(var(--u)*.04));
+  filter:brightness(.9);
+  box-shadow: inset 0 calc(var(--u)*-.03) 0 var(--ks), 0 0 0 2px rgba(255,255,255,.75);
+}
+.key:focus-visible .cap{ box-shadow: inset 0 calc(var(--u)*-.085) 0 var(--ks), 0 0 0 2px #ffffff, 0 0 0 4px #2b5d55; }
+@media (prefers-reduced-motion: reduce){ .cap{transition:none} }
+.enter .cap{ clip-path:polygon(0 0,100% 0,100% 100%,15% 100%,15% 48.5%,0 48.5%); border-radius:calc(var(--u)*.09); }
+.enter .mid{ left:15%; top:48%; }
+.cap span{position:absolute; line-height:1; white-space:nowrap;}
+.ch .m{top:13%; left:15%; font-size:calc(var(--u)*.27); font-weight:500;}
+.ch .s{top:15%; right:13%; font-size:calc(var(--u)*.19);}
+.ch .f{bottom:19%; left:15%; font-size:calc(var(--u)*.145);}
+.ch .f.tiny{font-size:calc(var(--u)*.1); line-height:1.02; white-space:normal; bottom:17%;}
+.ch .g{bottom:18%; right:12%; font-size:calc(var(--u)*.115); border:1px solid currentColor; border-radius:2px; padding:1px 2px;}
+.mid{
+  position:absolute; inset:0 0 calc(var(--u)*.08) 0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:calc(var(--u)*.06);
+}
+.mid span{position:static;}
+.mid .m{font-size:calc(var(--u)*.3); font-weight:500;}
+.mid .m.small{font-size:calc(var(--u)*.2);}
+.mid .f{font-size:calc(var(--u)*.13); display:flex; align-items:center; gap:2px;}
+.mid .g{font-size:calc(var(--u)*.11); border:1px solid currentColor; border-radius:2px; padding:1px 2px;}
+.spacebar{position:absolute; top:24%; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:calc(var(--u)*.12); font-size:calc(var(--u)*.24);}
+.spacebar .bar{position:static; width:calc(var(--u)*.9); height:2px; background:currentColor; border-radius:1px;}
+svg{width:1em; height:1em; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; vertical-align:-.12em;}
+svg .fill{fill:currentColor; stroke:none;}
+
+/* Layout editing on the drawing */
+.board.editing .key.editable{cursor:grab;}
+.board.editing .key.editable .cap{outline:1px dashed rgba(255,255,255,.7); outline-offset:-3px;}
+.board.editing .key:not(.editable) .cap{filter:saturate(.3) brightness(.75);}
+.key.dragging{opacity:.35;}
+.key.drop-target .cap{box-shadow:0 0 0 3px var(--accent), inset 0 calc(var(--u)*-.085) 0 var(--ks);}
+.key.selected .cap{box-shadow:0 0 0 2px #ffffff, 0 0 0 5px var(--accent), inset 0 calc(var(--u)*-.085) 0 var(--ks);}
+
+/* ---- Tabs ---- */
+.tabs{
+  display:inline-flex; gap:4px; padding:4px;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:12px;
+}
+.tab{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:8px 18px; border:0; border-radius:9px; cursor:pointer;
+  background:transparent; color:var(--muted); font-weight:600; font-size:.95rem;
+}
+.tab svg{width:18px; height:18px;}
+.tab[aria-selected="true"]{background:var(--surface); color:var(--text); box-shadow:var(--shadow);}
+.tabpanel{width:min(100%, 1040px);}
+.tabpanel[hidden]{display:none;}
+
+/* ---- Cards ---- */
+.card{
+  display:flex; flex-direction:column; gap:16px;
+  padding:20px; border-radius:16px;
+  background:var(--surface); border:1px solid var(--line); box-shadow:var(--shadow);
+}
+.card-head{display:flex; align-items:baseline; justify-content:space-between; gap:12px;}
+.card h2{margin:0; font-size:1.05rem; font-weight:700;}
+.card-head .muted{color:var(--muted); font-size:.9rem;}
+.note{margin:0; min-height:1.3em; color:var(--muted); font-size:.88rem;}
+.note.error{color:var(--danger);}
+.help{margin:0; color:var(--muted); font-size:.92rem; line-height:1.45;}
+
+/* ---- Lighting ---- */
+.lighting-grid{display:grid; gap:16px; grid-template-columns:minmax(0, 1.65fr) minmax(280px, 1fr); align-items:start;}
+@media (max-width:860px){ .lighting-grid{grid-template-columns:1fr;} }
+.effects{display:grid; grid-template-columns:repeat(auto-fill, minmax(116px, 1fr)); gap:8px;}
+.effect{position:relative; display:block;}
+.effect input{position:absolute; opacity:0; inset:0; margin:0;}
+.tile{
+  display:flex; flex-direction:column; gap:7px; height:100%;
+  padding:6px 6px 8px; border-radius:11px; cursor:pointer;
+  background:var(--surface-2); border:1.5px solid transparent;
+  transition:border-color .12s ease, background .12s ease;
+}
+.thumb{
+  height:34px; border-radius:7px;
+  background:var(--thumb), #23272a;
+  background-blend-mode:normal;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);
+}
+.ename{font-size:.84rem; font-weight:500; line-height:1.15; padding:0 2px;}
+.effect:hover .tile{border-color:var(--line);}
+.effect input:checked + .tile{border-color:var(--accent); background:var(--accent-soft);}
+.effect input:checked + .tile .ename{font-weight:700;}
+.effect input:focus-visible + .tile{outline:2px solid var(--accent); outline-offset:2px;}
+.effect input:disabled + .tile{cursor:default; opacity:.5;}
+
+.settings .setting{display:flex; flex-direction:column; gap:8px;}
+.setting .label{font-size:.9rem; font-weight:600;}
+.setting.off{opacity:.45;}
+.setting .why{font-weight:400; color:var(--muted); font-size:.82rem; margin-left:6px;}
+.segmented{
+  display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:3px; padding:3px;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:10px;
+}
+.seg{position:relative; display:block;}
+.seg input{position:absolute; opacity:0; inset:0; margin:0;}
+.seg span{
+  display:block; text-align:center; padding:7px 4px; border-radius:7px; cursor:pointer;
+  font-size:.88rem; color:var(--muted); font-weight:500;
+}
+.seg input:checked + span{background:var(--accent); color:var(--accent-ink); font-weight:700; box-shadow:0 1px 2px rgba(0,0,0,.15);}
+.seg input:focus-visible + span{outline:2px solid var(--accent); outline-offset:1px;}
+.seg input:disabled + span{cursor:default;}
+.swatches{display:flex; flex-wrap:wrap; gap:8px; align-items:center;}
+.swatch{
+  position:relative; width:32px; height:32px; padding:0; border-radius:50%; cursor:pointer;
+  background:var(--c, transparent); border:2px solid var(--line);
+  box-shadow:inset 0 0 0 2px var(--surface);
+}
+.swatch[aria-pressed="true"]{border-color:var(--text);}
+.swatch:disabled, .swatch:has(input:disabled){cursor:default;}
+.swatch.rainbow{background:conic-gradient(#ff3b5c, #ffb020, #ffe14d, #3ddc84, #2fb5ff, #8b6cff, #ff3b5c);}
+.swatch.custom{display:grid; place-items:center; background:var(--surface-2); color:var(--muted);}
+.swatch.custom svg{width:16px; height:16px;}
+.swatch.custom input{position:absolute; inset:0; opacity:0; width:100%; height:100%; cursor:inherit; border:0; padding:0;}
+.swatch.custom:focus-within{outline:2px solid var(--accent); outline-offset:2px;}
+.swatch-sep{width:1px; height:24px; background:var(--line); margin:0 2px;}
+
+/* ---- Music ---- */
+.column{display:flex; flex-direction:column; gap:16px; min-width:0;}
+.switch{position:relative; display:inline-block; width:44px; height:26px; flex:none;}
+.switch input{position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; z-index:1;}
+.switch span{position:absolute; inset:0; border-radius:999px; background:var(--line); transition:background .15s ease;}
+.switch span::after{
+  content:""; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%;
+  background:#ffffff; box-shadow:0 1px 3px rgba(0,0,0,.3); transition:transform .15s ease;
+}
+.switch input:checked + span{background:var(--accent);}
+.switch input:checked + span::after{transform:translateX(18px);}
+.switch input:focus-visible + span{outline:2px solid var(--accent); outline-offset:2px;}
+.switch input:disabled{cursor:default;}
+.meter{
+  display:grid; grid-template-columns:repeat(16, 1fr); gap:3px; align-items:end;
+  height:46px; padding:6px; border-radius:10px; background:#23272a;
+}
+.meter i{
+  display:block; height:100%; border-radius:2px; transform-origin:bottom; transform:scaleY(var(--l, .04));
+  background:linear-gradient(to top, #3ddc84, #ffe14d 65%, #ff3b5c);
+}
+.music:not(.on) .meter i{opacity:.35;}
+.row-switch{display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; font-size:.92rem; font-weight:600;}
+.row-switch small{display:block; font-weight:400; color:var(--muted); font-size:.82rem;}
+#music-style .seg span{padding-left:2px; padding-right:2px;}
+.music-active .settings .setting{opacity:.45;}
+.music-active .effects .tile{opacity:.7;}
+.music-active .effects .effect:hover .tile{opacity:1;}
+.music-active .effects input:checked + .tile{border-color:transparent; background:var(--surface-2);}
+@media (prefers-reduced-motion: reduce){ .switch span, .switch span::after{transition:none} }
+
+/* ---- Layout ---- */
+.toolbar{display:flex; flex-wrap:wrap; gap:8px; align-items:center;}
+.toolbar .spacer{flex:1;}
+.btn, .toolbar select{
+  display:inline-flex; align-items:center; gap:7px;
+  font-size:.92rem; font-weight:600;
+  padding:8px 14px; border-radius:9px; cursor:pointer;
+  background:var(--surface-2); border:1px solid var(--line); color:var(--text);
+}
+.btn svg{width:16px; height:16px;}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
+.btn[aria-pressed="true"]{background:var(--text); border-color:var(--text); color:var(--bg);}
+.btn:hover{filter:brightness(1.05);}
+#key-editor{
+  display:flex; flex-direction:column; gap:12px;
+  padding:16px; border-radius:12px; background:var(--surface-2); border:1px solid var(--line);
+}
+#key-editor[hidden]{display:none;}
+.layers{display:grid; grid-template-columns:4.5rem 4.2rem 1fr; gap:10px 12px; align-items:center;}
+.layers > label{color:var(--muted); font-size:.92rem;}
+.layers input:not([type]){
+  width:4.2rem; font-size:1.2rem; text-align:center;
+  padding:6px; border-radius:9px; background:var(--surface); border:1px solid var(--line);
+}
+.check{display:inline-flex; align-items:center; gap:6px; font-size:.88rem; cursor:pointer;}
+.check:has(input:disabled){opacity:.45; cursor:default;}
+.legend-key{display:flex; flex-wrap:wrap; gap:6px 16px; color:var(--muted); font-size:.85rem;}
+.legend-key b{color:var(--text);}
+details.install{border-top:1px solid var(--line); padding-top:14px;}
+details.install summary{cursor:pointer; font-weight:600; font-size:.95rem;}
+details.install ol{margin:12px 0 0; padding-left:1.3rem; display:flex; flex-direction:column; gap:6px; color:var(--muted); font-size:.92rem; line-height:1.45;}
+details.install b{color:var(--text);}
+details.install code{font-size:.85rem; background:var(--surface-2); padding:1px 5px; border-radius:5px;}
+
+@media (max-width:700px), (max-height:520px){
+  .brand small{display:none;}
+  .topbar{padding-top:calc(6px + env(safe-area-inset-top,0px));}
+  .chip{padding:4px 10px;}
+}
+@media (max-width:560px){
+  .topbar{padding-left:16px; padding-right:16px;}
+  .readout{max-width:46vw;}
+  .card{padding:16px;}
+  .effects{grid-template-columns:repeat(auto-fill, minmax(100px, 1fr));}
+  .toolbar .spacer{display:none;}
+}
+
+/* ?obs=1 : keyboard only, on a transparent background, for an OBS browser source */
+.obs body{background:transparent;}
+.obs .wrap{padding:0;}
+.obs .dock{position:static; background:transparent; border:0; backdrop-filter:none; -webkit-backdrop-filter:none;}
+.obs .topbar, .obs .tabs, .obs .tabpanel, .obs .hint{display:none;}
+.wrap{padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px));}
+.topbar{padding-top:10px; padding-left:max(20px, env(safe-area-inset-left, 0px)); padding-right:max(20px, env(safe-area-inset-right, 0px));}
+.dock{top:env(safe-area-inset-top, 0px);}</style>
+
+<!-- The header and keyboard stay pinned at the top so the preview is visible while changing settings. -->
+<div class="dock">
+<header class="topbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M7 14h10"/></svg></span>
+    <span>K631 Live<small>Redragon K631 RGB PRO</small></span>
+  </div>
+  <div class="top-right">
+    <div class="chip readout" id="readout" aria-live="polite" title="Last key pressed">Press a key</div>
+    <div class="chip status" id="status" data-state="off" role="status"><span class="dot"></span><span class="label">Connecting…</span></div>
+  </div>
+</header>
+<div class="scroller">
+  <div class="case">
+    <div class="cable" aria-hidden="true"></div>
+    <div class="board" id="board" role="group" aria-label="Clavier"></div>
+  </div>
+</div>
+</div>
+
+<main class="wrap">
+  <p class="hint">Turn your phone sideways for a bigger keyboard.</p>
+
+  <div class="tabs" role="tablist" aria-label="Sections">
+    <button type="button" class="tab" role="tab" id="tab-lighting" aria-controls="lighting" aria-selected="true">
+      <svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>Lighting
+    </button>
+    <button type="button" class="tab" role="tab" id="tab-layout" aria-controls="layout-panel" aria-selected="false" tabindex="-1">
+      <svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M7 14h10"/></svg>Layout
+    </button>
+  </div>
+
+  <section class="tabpanel lighting-grid" id="lighting" role="tabpanel" aria-labelledby="tab-lighting">
+    <div class="card">
+      <div class="card-head"><h2 id="effect-title">Effect</h2><span class="muted" id="effect-name">–</span></div>
+      <div class="effects" id="effects" role="radiogroup" aria-labelledby="effect-title"></div>
+    </div>
+    <div class="column">
+    <div class="card music" id="music-card">
+      <div class="card-head">
+        <h2 id="music-title">Music mode</h2>
+        <label class="switch" title="Music mode">
+          <input type="checkbox" id="music-on" role="switch" aria-labelledby="music-title" data-independent>
+          <span aria-hidden="true"></span>
+        </label>
+      </div>
+      <div class="meter" id="music-meter" aria-hidden="true"></div>
+      <div class="segmented" id="music-style" role="radiogroup" aria-label="Music style"></div>
+      <label class="row-switch">
+        <span>Light the keyboard too<small>Off: only this preview follows the music</small></span>
+        <span class="switch">
+          <input type="checkbox" id="music-keys" role="switch" checked data-independent>
+          <span aria-hidden="true"></span>
+        </span>
+      </label>
+      <p class="note" id="music-note">Makes the keys dance to whatever your PC is playing. Turning it on pauses the keyboard’s own effect.</p>
+    </div>
+    <div class="card settings">
+      <div class="setting" id="brightness-field">
+        <span class="label" id="brightness-label">Brightness</span>
+        <div class="segmented" id="brightness" role="radiogroup" aria-labelledby="brightness-label"></div>
+      </div>
+      <div class="setting" id="speed-field">
+        <span class="label" id="speed-label">Speed</span>
+        <div class="segmented" id="speed" role="radiogroup" aria-labelledby="speed-label"></div>
+      </div>
+      <div class="setting" id="color-field">
+        <span class="label" id="color-label">Colour</span>
+        <div class="swatches" role="group" aria-labelledby="color-label">
+          <button type="button" class="swatch rainbow" id="colourful" aria-pressed="false" aria-label="Colourful" title="Colourful" disabled></button>
+          <span class="swatch-sep" aria-hidden="true"></span>
+          <span class="swatches" id="palette"></span>
+          <label class="swatch custom" title="Pick any colour">
+            <input type="color" id="color" value="#ffffff" aria-label="Pick any colour" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          </label>
+        </div>
+      </div>
+      <p class="note" id="lighting-note" aria-live="polite">Reading the keyboard…</p>
+    </div>
+    </div>
+  </section>
+
+  <section class="tabpanel" id="layout-panel" role="tabpanel" aria-labelledby="tab-layout" hidden>
+    <div class="card">
+      <div class="card-head"><h2>Your layout</h2><span class="muted" id="layout-name"></span></div>
+      <div class="toolbar">
+        <button type="button" class="btn" id="edit-layout" aria-pressed="false">
+          <svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg><span>Edit layout</span>
+        </button>
+        <button type="button" class="btn" id="number-row" aria-pressed="false">
+          <svg viewBox="0 0 24 24"><path d="M5 9h14M5 15h14M10 4L8 20M16 4l-2 16"/></svg><span>Digits first</span>
+        </button>
+        <select id="preset" aria-label="Reset the layout to a preset">
+          <option value="">Reset to…</option>
+          <option value="digits">AZERTY, digits first</option>
+          <option value="azerty">AZERTY (Windows)</option>
+        </select>
+        <span class="spacer"></span>
+        <button type="button" class="btn primary" id="export-layout">
+          <svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Export Windows layout</span>
+        </button>
+      </div>
+      <p class="help" id="layout-help">Turn on <b>Edit layout</b>, then drag a key onto another to swap what they type, or click a key to set its characters.</p>
+      <div class="legend-key"><span><b>Big label</b> = what the key types</span><span><b>Small label</b> = Shift, then Alt Gr</span></div>
+      <form id="key-editor" hidden>
+        <p class="help">Editing <b id="key-name"></b></p>
+        <div class="layers">
+          <label for="layer-n">Normal</label>
+          <input id="layer-n" data-layer="n" autocomplete="off" spellcheck="false">
+          <label class="check"><input type="checkbox" id="dead-n"> Accent key</label>
+          <label for="layer-s">Shift</label>
+          <input id="layer-s" data-layer="s" autocomplete="off" spellcheck="false">
+          <label class="check"><input type="checkbox" id="dead-s"> Accent key</label>
+          <label for="layer-a">Alt Gr</label>
+          <input id="layer-a" data-layer="a" autocomplete="off" spellcheck="false">
+          <label class="check"><input type="checkbox" id="dead-a"> Accent key</label>
+        </div>
+        <div class="toolbar">
+          <button type="submit" class="btn primary">Apply</button>
+          <button type="button" class="btn" id="cancel-key">Cancel</button>
+        </div>
+      </form>
+      <p class="note" id="layout-note" aria-live="polite"></p>
+      <details class="install">
+        <summary>How to install your layout in Windows</summary>
+        <ol>
+          <li>Click <b>Export Windows layout</b>. Each export gets a new name (v2, v3…), so it never clashes with one you installed before.</li>
+          <li>In <b>Microsoft Keyboard Layout Creator</b>: <b>File → Load Source File</b> → <code>K631Live\export\K631-custom.klc</code>.</li>
+          <li><b>Project → Build DLL and Setup Package</b>, then run <code>setup.exe</code> from the folder it creates in Documents.</li>
+          <li>Press <b>Win + Space</b> and choose the new <b>French - K631 custom</b> version.</li>
+          <li>Optional: remove older versions in <b>Settings → Apps → Installed apps</b>.</li>
+        </ol>
+      </details>
+    </div>
+  </section>
+</main>
+
+<script>
+// K631 Live demo: stands in for K631Live.exe and the keyboard, so the real K631 Live page runs in any
+// browser. It answers the same API (/api/lighting, /api/music, /api/layout) and sends the same live
+// events (status, key presses, music frames) as the real program; nothing here touches a device.
+(() => {
+  const listeners = new Set();
+
+  class DemoEventSource {
+    constructor(url){
+      this.url = url;
+      this.handlers = {};
+      this.onmessage = null;
+      this.onerror = null;
+      listeners.add(this);
+      setTimeout(() => this.emit('status', { k631: true, all: false }), 60);
+    }
+    addEventListener(type, fn){ (this.handlers[type] = this.handlers[type] || []).push(fn); }
+    removeEventListener(){}
+    close(){ listeners.delete(this); }
+    emit(type, data){
+      const event = { data: JSON.stringify(data) };
+      if (type === 'message'){ if (this.onmessage) this.onmessage(event); }
+      else (this.handlers[type] || []).forEach(fn => fn(event));
+    }
+  }
+  const broadcast = (type, data) => listeners.forEach(l => l.emit(type, data));
+  window.EventSource = DemoEventSource;
+
+  // ---- Simulated keyboard lighting (the K631's mode block, as K631Live.exe reports it) ----
+  const PALETTE = ['#ff0000', '#0000ff', '#00ff00', '#ffff00', '#ff00ff', '#00ffff', '#ffffff'];
+  const COLOR_EFFECTS = [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 18, 19, 20];
+  const kb = { mode: 18, pairs: {}, colourful: {}, colors: {} };
+  for (let m = 1; m <= 20; m++){
+    kb.pairs[m] = { speed: 3, brightness: 3 };
+    kb.colourful[m] = true;
+    kb.colors[m] = PALETTE.slice();
+  }
+
+  function describe(){
+    const s = { ok: true, mode: kb.mode };
+    if (kb.mode <= 20){
+      Object.assign(s, kb.pairs[kb.mode]);
+      s.colourful = kb.colourful[kb.mode];
+      s.palette = kb.colors[kb.mode].slice();
+      s.color = s.palette[0];
+    }
+    return s;
+  }
+
+  function setLighting(a){
+    const fail = error => ({ ok: false, error });
+    const mode = Number(a.mode);
+    if (!(mode >= 1 && mode <= 21)) return fail('Effect must be 1-21.');
+    if (a.brightness != null && !(a.brightness >= 0 && a.brightness <= 4)) return fail('Brightness must be 0-4.');
+    if (a.speed != null && !(a.speed >= 1 && a.speed <= 4)) return fail('Speed must be 1-4.');
+    if (a.color != null && !COLOR_EFFECTS.includes(mode)) return fail('This effect has no colour setting.');
+    const before = JSON.stringify(describe());
+    kb.mode = mode;
+    if (mode <= 20){
+      if (a.brightness != null) kb.pairs[mode].brightness = a.brightness;
+      if (a.speed != null) kb.pairs[mode].speed = a.speed;
+      if (a.color === 'colourful') kb.colourful[mode] = true;
+      else if (a.color){ kb.colourful[mode] = false; kb.colors[mode][0] = a.color.toLowerCase(); }
+    }
+    const after = describe();
+    return Object.assign(after, { changed: before === JSON.stringify(after) ? [] : ['demo'] });
+  }
+
+  // ---- Simulated music: a 120 BPM groove, rendered with the same five styles as K631Live.exe ----
+  const music = { on: false, style: 'wave', keys: true, timer: 0, start: 0 };
+  const musicState = () => ({ on: music.on, style: music.style, keys: music.keys, keysError: null });
+
+  const renderer = (() => {
+    const COLUMNS = 15, GRID_ROWS = 6, KEY_ROWS = 5;
+    const shown = new Float64Array(16);
+    let bloomHue = 0, pulseHue = 0, bassAverage = 0;
+    const zoneHue = c => 120 + c * 300 / (COLUMNS - 1);
+    const average = (from, to) => { let s = 0; for (let b = from; b <= to; b++) s += shown[b]; return s / (to - from + 1); };
+    function set(rgb, column, row, hue, intensity){
+      intensity = Math.max(0, Math.min(1, intensity));
+      hue = ((hue % 360) + 360) % 360;
+      const x = 1 - Math.abs(hue / 60 % 2 - 1);
+      const [r, g, b] = hue < 60 ? [1, x, 0] : hue < 120 ? [x, 1, 0] : hue < 180 ? [0, 1, x]
+        : hue < 240 ? [0, x, 1] : hue < 300 ? [x, 0, 1] : [1, 0, x];
+      const i = (column * GRID_ROWS + row) * 3;
+      rgb[i] = Math.round(r * 255 * intensity);
+      rgb[i + 1] = Math.round(g * 255 * intensity);
+      rgb[i + 2] = Math.round(b * 255 * intensity);
+    }
+    return (style, levels) => {
+      for (let b = 0; b < 16; b++) shown[b] = levels[b] > shown[b] ? levels[b] : shown[b] * 0.82 + levels[b] * 0.18;
+      const rgb = new Uint8Array(COLUMNS * GRID_ROWS * 3);
+      const volume = average(0, 15), bass = average(0, 2);
+      if (style === 'bars'){
+        for (let c = 0; c < COLUMNS; c++)
+          for (let row = 0; row < KEY_ROWS; row++)
+            if (shown[c] >= (KEY_ROWS - row) / KEY_ROWS - 0.1) set(rgb, c, row, zoneHue(c), 1);
+      } else if (style === 'bloom'){
+        bloomHue = (bloomHue + 1.5) % 360;
+        const radius = average(0, 7) * 9;
+        for (let c = 0; c < COLUMNS; c++)
+          for (let row = 0; row < KEY_ROWS; row++){
+            const d = Math.sqrt((c - 7) ** 2 + (row - 2) ** 2 * 2.56);
+            if (d <= radius) set(rgb, c, row, bloomHue + d * 25, 1 - 0.6 * d / (radius + 0.5));
+          }
+      } else if (style === 'stream'){
+        const reach = volume * COLUMNS * 1.3;
+        for (let c = 0; c < COLUMNS && c < reach; c++)
+          for (let row = 0; row < KEY_ROWS; row++) set(rgb, c, row, 120 + c * 8, Math.min(1, reach - c));
+      } else if (style === 'pulse'){
+        if (bass > bassAverage * 1.35 && bass > 0.35) pulseHue = (pulseHue + 55) % 360;
+        bassAverage = bassAverage * 0.95 + bass * 0.05;
+        for (let c = 0; c < COLUMNS; c++)
+          for (let row = 0; row < KEY_ROWS; row++) set(rgb, c, row, pulseHue, 0.12 + 0.88 * bass);
+      } else {
+        for (let c = 0; c < COLUMNS; c++)
+          if (shown[c] > 0.05) set(rgb, c, KEY_ROWS - 1 - Math.round(Math.min(1, shown[c]) * (KEY_ROWS - 1)), zoneHue(c), 1);
+      }
+      return rgb;
+    };
+  })();
+
+  // Band levels for a made-up song: kick on every beat, a bass line, a moving melody, hi-hats off the beat.
+  function songLevels(t){
+    const beat = t * 2, phase = beat % 1, bar = Math.floor(beat / 4) % 4;
+    const kick = Math.exp(-phase * 7), hat = Math.exp(-((beat + 0.5) % 1) * 12);
+    const levels = [];
+    for (let b = 0; b < 16; b++){
+      let v;
+      if (b < 3) v = 0.35 + 0.65 * kick;
+      else if (b < 6) v = 0.3 + 0.35 * (0.5 + 0.5 * Math.sin(t * 2.1 + b)) + 0.2 * kick;
+      else if (b < 11) v = 0.2 + 0.5 * Math.max(0, Math.sin(t * 3.3 - b * 0.7 + bar)) ** 2;
+      else v = 0.08 + 0.6 * hat * (1 - (b - 11) * 0.12);
+      levels.push(Math.max(0, Math.min(1, v * (0.85 + 0.15 * Math.sin(t * 13 + b * 2.7)))));
+    }
+    return levels;
+  }
+
+  function tick(){
+    const levels = songLevels((performance.now() - music.start) / 1000);
+    const frame = renderer(music.style, levels);
+    let hex = '';
+    for (const v of frame) hex += v.toString(16).padStart(2, '0');
+    broadcast('audio', { b: levels.map(v => Math.round(v * 100)), k: music.keys, f: hex });
+  }
+
+  function setMusic(a){
+    if (a.style != null){
+      if (!['wave', 'bars', 'bloom', 'stream', 'pulse'].includes(a.style)) return Object.assign(musicState(), { ok: false, error: 'Unknown music style.' });
+      music.style = a.style;
+    }
+    if (a.keys != null) music.keys = !!a.keys;
+    if (a.on != null){
+      if (a.on && !music.on){ music.on = true; music.start = performance.now(); music.timer = setInterval(tick, 33); }
+      else if (!a.on && music.on){ music.on = false; clearInterval(music.timer); }
+    }
+    broadcast('music', musicState());
+    return Object.assign(musicState(), { ok: true });
+  }
+
+  // ---- The API K631Live.exe serves ----
+  let savedLayout = null;
+  const json = obj => new Response(JSON.stringify(obj), { headers: { 'Content-Type': 'application/json' } });
+  const realFetch = window.fetch.bind(window);
+  window.fetch = async (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input.url;
+    const path = new URL(url, location.href).pathname;
+    if (!/\/api\/(lighting|music|layout)/.test(path)) return realFetch(input, init);
+    const method = (init.method || 'GET').toUpperCase();
+    let body = null;
+    if (init.body && !path.endsWith('/klc')){ try { body = JSON.parse(init.body); } catch { body = null; } }
+    await new Promise(r => setTimeout(r, 90));   // about as long as a real keyboard write takes
+    if (path.endsWith('/api/lighting')) return json(method === 'GET' ? describe() : setLighting(body || {}));
+    if (path.endsWith('/api/music')) return json(method === 'GET' ? Object.assign(musicState(), { ok: true }) : setMusic(body || {}));
+    if (path.endsWith('/api/layout/klc')) return json({ ok: true, path: 'K631Live\\export\\K631-custom.klc' });
+    if (method === 'GET') return json(savedLayout);
+    savedLayout = body;
+    return json({ ok: true });
+  };
+
+  // ---- Simulated typing, used by the guided tour ----
+  const keyEvent = (type, code) => broadcast('message', { type, code, scan: 0, vk: 0, k631: true });
+  window.demoKeyboard = {
+    press(code, holdMs = 140){
+      keyEvent('down', code);
+      return new Promise(r => setTimeout(() => { keyEvent('up', code); r(); }, holdMs));
+    }
+  };
+})();
+
+</script>
+<script>
+const ICON = {
+  lock:'<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
+  bulb:'<svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>',
+  vdown:'<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 9.5a3.5 3.5 0 0 1 0 5"/></svg>',
+  vup:'<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 9.5a3.5 3.5 0 0 1 0 5M19 7a7 7 0 0 1 0 10"/></svg>',
+  mute:'<svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>',
+  stop:'<svg viewBox="0 0 24 24"><rect class="fill" x="6" y="6" width="12" height="12" rx="1"/></svg>',
+  prev:'<svg viewBox="0 0 24 24"><path d="M6 6v12"/><path class="fill" d="M19 6l-10 6 10 6z"/></svg>',
+  play:'<svg viewBox="0 0 24 24"><path class="fill" d="M3 6l9 6-9 6z"/><path d="M15.5 6v12M20 6v12"/></svg>',
+  next:'<svg viewBox="0 0 24 24"><path class="fill" d="M5 6l10 6-10 6z"/><path d="M18 6v12"/></svg>',
+  pgup:'<svg viewBox="0 0 24 24"><path d="M7 8l5-5 5 5M12 3v18M8.5 11h7M8.5 14.5h7M8.5 18h7"/></svg>',
+  pgdn:'<svg viewBox="0 0 24 24"><path d="M7 16l5 5 5-5M12 3v18M8.5 6h7M8.5 9.5h7M8.5 13h7"/></svg>',
+  menu:'<svg viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5z"/><path d="M8 8h6M8 11.5h8M8 15h8M8 18.5h5"/><path d="M14 9l5 5"/></svg>'
+};
+
+const T = 'teal', W = 'white';
+const k = (c, m, o = {}) => ({ c, m, w: 1, h: 1, ...o });
+const mod = (c, m, o = {}) => k(c, m, { ctr: 1, ...o });
+
+const rows = [
+  [
+    mod(W,'Echap',{code:'Escape'}),
+    k(T,'1',{s:'&',f:'F1',g:'G1',code:'Digit1'}),
+    k(T,'2',{s:'é ~',f:'F2',g:'G2',code:'Digit2'}),
+    k(T,'3',{s:'" #',f:'F3',g:'G3',code:'Digit3'}),
+    k(T,'4',{s:"' {",f:'F4',g:'G4',code:'Digit4'}),
+    k(W,'5',{s:'( [',f:'F5',g:'G5',code:'Digit5'}),
+    k(W,'6',{s:'- |',f:'F6',g:'G6',code:'Digit6'}),
+    k(W,'7',{s:'è `',f:'F7',g:'MR',code:'Digit7'}),
+    k(W,'8',{s:'_ \\',f:'F8',code:'Digit8'}),
+    k(T,'9',{s:'ç ^',f:'F9',code:'Digit9'}),
+    k(T,'0',{s:'à @',f:'F10',code:'Digit0'}),
+    k(T,'°',{s:') ]',f:'F11',code:'Minus'}),
+    k(T,'+',{s:'= }',f:'F12',code:'Equal'}),
+    mod(W,'⟵',{w:2,f:ICON.bulb+'REC',code:'Backspace',n:'Retour arrière'}),
+    mod(W,'Suppr',{f:'↻',code:'Delete'})
+  ],
+  [
+    mod(W,'↹',{w:1.5,code:'Tab',n:'Tab'}),
+    k(T,'A',{f:'BT1',code:'KeyQ'}),
+    k(T,'Z',{f:'BT2',code:'KeyW'}),
+    k(T,'E',{s:'€',f:'BT3',code:'KeyE'}),
+    k(T,'R',{f:'2.4G',code:'KeyR'}),
+    k(T,'T',{code:'KeyT'}),
+    k(T,'Y',{code:'KeyY'}),
+    k(T,'U',{code:'KeyU'}),
+    k(T,'I',{code:'KeyI'}),
+    k(T,'O',{code:'KeyO'}),
+    k(T,'P',{code:'KeyP'}),
+    k(T,'^',{s:'¨',f:'↖',code:'BracketLeft'}),
+    k(T,'$',{s:'£',f:'Fin ¤',code:'BracketRight'}),
+    mod(W,'↵',{w:1.5,h:2,enter:1,code:'Enter',n:'Entrée'}),
+    k(W,'2',{s:'n',code:'Backquote',n:'2 n'})
+  ],
+  [
+    mod(W,ICON.lock,{w:1.75,code:'CapsLock',n:'Verr. Maj'}),
+    k(T,'Q',{code:'KeyA'}),
+    k(T,'S',{code:'KeyS'}),
+    k(T,'D',{code:'KeyD'}),
+    k(T,'F',{code:'KeyF'}),
+    k(T,'G',{code:'KeyG'}),
+    k(T,'H',{code:'KeyH'}),
+    k(T,'J',{code:'KeyJ'}),
+    k(T,'K',{code:'KeyK'}),
+    k(T,'L',{code:'KeyL'}),
+    k(T,'M',{f:'Impr<br>écran<br>Syst',tiny:1,code:'Semicolon'}),
+    k(T,'ù',{s:'%',f:'Insert',code:'Quote'}),
+    k(T,'*',{s:'µ',code:'Backslash'}),
+    { spacer:1, w:1.25 },
+    mod(W,ICON.pgup,{f:'M',code:'PageUp',n:'Page haut / M'})
+  ],
+  [
+    mod(W,'⇧',{w:1.25,code:'ShiftLeft',n:'Maj gauche'}),
+    k(W,'<',{s:'>',code:'IntlBackslash'}),
+    k(T,'W',{f:ICON.vdown,code:'KeyZ'}),
+    k(T,'X',{f:ICON.vup,code:'KeyX'}),
+    k(T,'C',{f:ICON.mute,code:'KeyC'}),
+    k(T,'V',{f:ICON.stop,code:'KeyV'}),
+    k(T,'B',{f:ICON.prev,code:'KeyB'}),
+    k(T,'N',{f:ICON.play,code:'KeyN'}),
+    k(T,',',{s:'?',f:ICON.next,code:'KeyM'}),
+    k(T,';',{s:'.',code:'Comma'}),
+    k(T,':',{s:'/',code:'Period'}),
+    k(T,'!',{s:'§',code:'Slash'}),
+    mod(W,'⇧',{w:1.75,code:'ShiftRight',n:'Maj droite'}),
+    mod(T,'↑',{f:'◐▲',code:'ArrowUp',n:'Flèche haut'}),
+    mod(W,ICON.pgdn,{f:'C→',code:'PageDown',n:'Page bas / C→'})
+  ],
+  [
+    mod(W,'Ctrl',{w:1.25,code:'ControlLeft'}),
+    mod(W,'Win',{w:1.25,code:'MetaLeft'}),
+    mod(W,'Alt',{w:1.25,code:'AltLeft'}),
+    k(T,'',{w:6.25,space:1,code:'Space',n:'Espace'}),
+    mod(W,'Alt Gr',{code:'AltRight'}),
+    // The Fn key itself never reaches the PC; it lights while an Fn-layer key is held.
+    mod(W,'Fn',{f:'FN1',n:'Fn',code:'Fn'}),
+    mod(W,ICON.menu,{g:'FN2',code:'ContextMenu',n:'Menu / FN2'}),
+    mod(T,'←',{f:'▼',code:'ArrowLeft',n:'Flèche gauche'}),
+    mod(T,'↓',{f:'◐▼',code:'ArrowDown',n:'Flèche bas'}),
+    mod(T,'→',{f:'▲',code:'ArrowRight',n:'Flèche droite'})
+  ]
+];
+
+// Codes the K631 sends for Fn + key, mapped back to the physical key that produced them.
+const FN_LAYER = {
+  F1:'Digit1', F2:'Digit2', F3:'Digit3', F4:'Digit4', F5:'Digit5', F6:'Digit6',
+  F7:'Digit7', F8:'Digit8', F9:'Digit9', F10:'Digit0', F11:'Minus', F12:'Equal',
+  Home:'BracketLeft', End:'BracketRight', PrintScreen:'Semicolon', Insert:'Quote',
+  AudioVolumeDown:'KeyZ', AudioVolumeUp:'KeyX', AudioVolumeMute:'KeyC', MediaStop:'KeyV',
+  MediaTrackPrevious:'KeyB', MediaPlayPause:'KeyN', MediaTrackNext:'KeyM'
+};
+
+const board = document.getElementById('board');
+const readout = document.getElementById('readout');
+const status = document.getElementById('status');
+const byCode = {};
+const LEDS = [];
+
+if (new URLSearchParams(location.search).has('obs')) document.documentElement.classList.add('obs');
+
+const plain = s => s.replace(/<[^>]*>/g,'').trim();
+const nameOf = key => key.n || [plain(key.m), key.s, key.f && plain(key.f)].filter(Boolean).join('  ') || 'Touche';
+
+function legend(key){
+  if (key.space) return '<div class="spacebar"><span class="bar"></span>' + ICON.bulb + '</div>';
+  if (key.ctr){
+    const small = plain(key.m).length > 2 ? ' small' : '';
+    return '<div class="mid"><span class="m' + small + '">' + key.m + '</span>' +
+      (key.f ? '<span class="f">' + key.f + '</span>' : '') +
+      (key.g ? '<span class="g">' + key.g + '</span>' : '') + '</div>';
+  }
+  return '<span class="m">' + key.m + '</span>' +
+    (key.s ? '<span class="s">' + key.s + '</span>' : '') +
+    (key.f ? '<span class="f' + (key.tiny ? ' tiny' : '') + '">' + key.f + '</span>' : '') +
+    (key.g ? '<span class="g">' + key.g + '</span>' : '');
+}
+
+rows.forEach((row, y) => {
+  let x = 0;
+  row.forEach(key => {
+    if (!key.spacer){
+      const el = document.createElement('div');
+      el.className = 'key' + (key.enter ? ' enter' : '');
+      el.style.setProperty('--x', x);
+      el.style.setProperty('--y', y);
+      el.style.setProperty('--w', key.w);
+      el.style.setProperty('--h', key.h);
+      el.tabIndex = 0;
+      el.setAttribute('role','button');
+      el.setAttribute('aria-label', nameOf(key));
+      const cap = document.createElement('div');
+      cap.className = 'cap ' + key.c + (key.ctr || key.space ? '' : ' ch');
+      cap.innerHTML = legend(key);
+      el.appendChild(cap);
+      board.appendChild(el);
+      key.cap = cap;
+      key.el = el;
+      key.cx = x + key.w / 2;
+      key.cy = y + key.h / 2;
+      key.seed = Math.random();
+      key.pressedAt = -1e9;
+      LEDS.push(key);
+      if (key.code) byCode[key.code] = key;
+
+      const down = () => {
+        if (editing) return;
+        cap.classList.add('down');
+        readout.textContent = nameOf(key);
+        ledPressed(key);
+      };
+      const up = () => { cap.classList.remove('down'); key.held = false; };
+      el.addEventListener('pointerdown', down);
+      el.addEventListener('pointerup', up);
+      el.addEventListener('pointerleave', up);
+      el.addEventListener('pointercancel', up);
+    }
+    x += key.w;
+  });
+});
+
+const fnHeld = new Set();
+
+function press(code){
+  const fnTarget = FN_LAYER[code];
+  const key = byCode[fnTarget || code];
+  if (!key) return false;
+  key.cap.classList.add('down');
+  if (!key.held) ledPressed(key);
+  if (fnTarget){
+    fnHeld.add(code);
+    byCode.Fn.cap.classList.add('down');
+    readout.textContent = 'Fn + ' + plain(key.m) + '  →  ' + code;
+  } else {
+    readout.textContent = nameOf(key);
+  }
+  return true;
+}
+
+function release(code){
+  const fnTarget = FN_LAYER[code];
+  const key = byCode[fnTarget || code];
+  if (key){
+    key.cap.classList.remove('down');
+    key.held = false;
+  }
+  if (fnTarget){
+    fnHeld.delete(code);
+    if (!fnHeld.size) byCode.Fn.cap.classList.remove('down');
+  }
+}
+
+function releaseAll(){
+  fnHeld.clear();
+  LEDS.forEach(k => k.held = false);
+  document.querySelectorAll('.cap.down').forEach(c => c.classList.remove('down'));
+}
+
+function setStatus(state, text){
+  status.dataset.state = state;
+  status.querySelector('.label').textContent = text;
+}
+
+// While K631 Live is streaming, it is the only source of key presses, so other
+// keyboards typing into this window don't light keys.
+let live = false;
+
+// Leave typing in form fields alone, and let Space/Enter activate the focused button or tab.
+const inField = e => e.target instanceof Element && (!!e.target.closest('input, select, textarea') ||
+  (!!e.target.closest('button') && (e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter')));
+
+window.addEventListener('keydown', e => {
+  if (!byCode[e.code] || inField(e)) return;
+  if (!e.ctrlKey && !e.metaKey) e.preventDefault();
+  if (!live) press(e.code);
+});
+window.addEventListener('keyup', e => {
+  if (!live) release(e.code);
+});
+window.addEventListener('blur', () => {
+  if (!live) releaseAll();
+});
+
+if (location.protocol.startsWith('http')){
+  const events = new EventSource('/events');
+  events.addEventListener('status', e => {
+    const s = JSON.parse(e.data);
+    live = true;
+    if (s.all) setStatus('live', 'Live · all keyboards');
+    else if (s.k631) setStatus('live', 'Live · K631 connected');
+    else setStatus('wait', 'K631 not detected. Plug it in.');
+  });
+  events.onmessage = e => {
+    const ev = JSON.parse(e.data);
+    if (ev.type === 'up') release(ev.code);
+    else if (!press(ev.code)) readout.textContent = (ev.code || 'Unknown key') + '  (scan 0x' + ev.scan.toString(16).toUpperCase() + ')';
+  };
+  events.addEventListener('audio', e => onAudio(JSON.parse(e.data)));
+  events.addEventListener('music', e => showMusic(JSON.parse(e.data)));
+  events.onerror = () => {
+    live = false;
+    releaseAll();
+    setStatus('off', 'K631 Live is not running. Reconnecting…');
+  };
+} else {
+  setStatus('off', 'Opened as a file: only keys typed into this window light up. Run K631Live.exe for live input.');
+}
+
+// ---- Lighting ----
+// Effect numbers and which controls apply come from the Redragon app's Cfg.ini (LedOpt) and text.xml.
+// Columns: id, name, has speed, has brightness, has colour, tile thumbnail.
+const R = '#ff3b5c,#ffb020,#ffe14d,#3ddc84,#2fb5ff,#8b6cff,#ff3b5c';
+const EFFECTS = [
+  [1,'Fixed on',0,1,1, 'linear-gradient(#ff4d5e,#ff4d5e)'],
+  [2,'Respire',1,1,1, 'radial-gradient(circle at 50% 50%,#ff4d5e 0 22%,transparent 62%)'],
+  [3,'Rainbow',1,1,0, 'linear-gradient(90deg,' + R + ')'],
+  [4,'Flash away',1,1,1, 'radial-gradient(circle at 32% 50%,#ffffff 0 7%,#2fb5ff 14%,transparent 48%)'],
+  [5,'Raindrops',1,1,1, 'radial-gradient(circle at 18% 30%,#2fb5ff 0 9%,transparent 10%),radial-gradient(circle at 62% 65%,#3ddc84 0 9%,transparent 10%),radial-gradient(circle at 84% 25%,#ffb020 0 8%,transparent 9%),radial-gradient(circle at 40% 80%,#8b6cff 0 7%,transparent 8%)'],
+  [6,'Rainbow wheel',1,1,1, 'conic-gradient(' + R + ')'],
+  [7,'Ripples shining',1,1,1, 'repeating-radial-gradient(circle at 50% 50%,#2fb5ff 0 4px,transparent 4px 9px)'],
+  [8,'Stars twinkle',1,1,1, 'radial-gradient(circle at 15% 35%,#fff 0 2px,transparent 3px),radial-gradient(circle at 45% 70%,#ffe14d 0 2px,transparent 3px),radial-gradient(circle at 72% 30%,#fff 0 2px,transparent 3px),radial-gradient(circle at 88% 72%,#2fb5ff 0 2px,transparent 3px)'],
+  [9,'Shadow disappear',1,1,1, 'radial-gradient(circle at 50% 50%,#23272a 0 22%,transparent 34%),linear-gradient(90deg,' + R + ')'],
+  [10,'Retro snake',1,1,1, 'linear-gradient(90deg,transparent 0 18%,#3ddc84 18% 64%,transparent 64%) 50% 50%/100% 34% no-repeat'],
+  [11,'Neon stream',1,1,1, 'repeating-linear-gradient(90deg,#ff3bd4 0 10px,#2fb5ff 10px 20px)'],
+  [12,'Reaction',1,1,1, 'radial-gradient(circle at 62% 50%,#ffe14d 0 14%,transparent 30%)'],
+  [13,'Sine wave',1,1,1, 'repeating-linear-gradient(160deg,#8b6cff 0 8px,#2fb5ff 8px 16px)'],
+  [14,'Retinue scanning',1,1,1, 'linear-gradient(90deg,transparent 34%,#ff4d5e 50%,transparent 66%)'],
+  [15,'Rotating windmill',1,1,0, 'repeating-conic-gradient(from 10deg,#3ddc84 0 22deg,transparent 22deg 90deg)'],
+  [16,'Colorful waterfall',1,1,0, 'linear-gradient(180deg,' + R + ')'],
+  [17,'Blossoming',1,1,0, 'repeating-radial-gradient(circle,#ff3b5c 0 5px,#ffb020 5px 10px,#8b6cff 10px 15px)'],
+  [18,'Rotating storm',1,1,1, 'conic-gradient(from 90deg at 50% 50%,' + R + ')'],
+  [19,'Collision',1,1,1, 'linear-gradient(90deg,#2fb5ff 0 16%,transparent 16% 84%,#ff4d5e 84%)'],
+  [20,'Perfect',1,1,1, 'linear-gradient(90deg,#ff3b5c,#ffe14d 55%,transparent 55%)'],
+  [21,'Self-define',0,0,0, 'repeating-conic-gradient(#8a9399 0 25%,#d8dde0 0 50%) 50% 50%/12px 12px']
+].map(([id, name, speed, light, color, thumb]) => ({ id, name, speed: !!speed, light: !!light, color: !!color, thumb }));
+
+const lightingPanel = document.getElementById('lighting');
+const effectsBox = document.getElementById('effects');
+const color = document.getElementById('color');
+const colourful = document.getElementById('colourful');
+const note = document.getElementById('lighting-note');
+
+// Radio-button tiles and step buttons: accessible as normal radio groups.
+function radio(name, value, className, inner, label){
+  const wrap = document.createElement('label');
+  wrap.className = className;
+  const input = document.createElement('input');
+  input.type = 'radio';
+  input.name = name;
+  input.value = value;
+  input.disabled = true;
+  if (label) input.setAttribute('aria-label', label);
+  wrap.append(input, inner);
+  return wrap;
+}
+
+EFFECTS.forEach(e => {
+  const tile = document.createElement('span');
+  tile.className = 'tile';
+  tile.innerHTML = '<span class="thumb" aria-hidden="true"></span><span class="ename"></span>';
+  tile.firstChild.style.setProperty('--thumb', e.thumb);
+  tile.lastChild.textContent = e.name;
+  effectsBox.append(radio('effect', e.id, 'effect', tile));
+});
+
+function segment(boxId, name, steps){
+  const box = document.getElementById(boxId);
+  for (const [value, text, label] of steps){
+    const span = document.createElement('span');
+    span.textContent = text;
+    box.append(radio(name, value, 'seg', span, label));
+  }
+}
+segment('brightness', 'brightness', [[0,'Off','Brightness off'],[1,'1'],[2,'2'],[3,'3'],[4,'4','Brightness 4 (maximum)']]);
+segment('speed', 'speed', [[1,'Slow'],[2,'Normal'],[3,'Fast'],[4,'Fastest']]);
+
+const getRadio = name => { const c = lightingPanel.querySelector('input[name="' + name + '"]:checked'); return c ? +c.value : null; };
+const setRadio = (name, v) => lightingPanel.querySelectorAll('input[name="' + name + '"]').forEach(i => i.checked = +i.value === v);
+const setGroupDisabled = (name, off) => lightingPanel.querySelectorAll('input[name="' + name + '"]').forEach(i => i.disabled = off);
+// Music mode doesn't depend on the keyboard, so its controls (data-independent) stay usable.
+const setLightingDisabled = off => lightingPanel.querySelectorAll('input:not([data-independent]), button:not([data-independent])')
+  .forEach(el => el.disabled = off);
+const currentEffect = () => getRadio('effect');
+
+function setNote(text, isError){
+  note.textContent = text;
+  note.classList.toggle('error', !!isError);
+}
+
+let lastLighting = null;   // last state read from the keyboard
+
+function showState(s){
+  lastLighting = s;
+  const effect = EFFECTS.find(e => e.id === s.mode);
+  setRadio('effect', s.mode);
+  document.getElementById('effect-name').textContent = effect ? effect.name : 'Unknown effect (' + s.mode + ')';
+  const hasLevels = s.brightness !== undefined;
+  setRadio('brightness', hasLevels ? s.brightness : -1);
+  setRadio('speed', hasLevels ? s.speed : -1);
+  const canSpeed = !!effect && effect.speed && hasLevels;
+  const canLight = !!effect && effect.light && hasLevels;
+  const canColor = !!effect && effect.color && hasLevels;
+  document.getElementById('speed-field').classList.toggle('off', !canSpeed);
+  document.getElementById('brightness-field').classList.toggle('off', !canLight);
+  document.getElementById('color-field').classList.toggle('off', !canColor);
+  setGroupDisabled('effect', false);
+  setGroupDisabled('brightness', !canLight);
+  setGroupDisabled('speed', !canSpeed);
+  colourful.setAttribute('aria-pressed', String(!!s.colourful));
+  colourful.disabled = !canColor;
+  if (s.color) color.value = s.color;
+  // Picking a colour needs the saved colour block; without it only "Colourful" can be toggled.
+  color.disabled = !canColor || !s.color;
+  showPalette(s.palette || [], canColor, s.colourful ? null : s.color);
+  setPreview(effect, s);
+  if (music.on) lockForMusic();
+}
+
+// While music mode is on, the effect's own settings are locked; picking an effect ends music mode.
+function lockForMusic(){
+  document.querySelectorAll('.settings input, .settings button').forEach(el => el.disabled = true);
+}
+
+// The effect's 7 stored colours. Clicking one makes it the single colour.
+function showPalette(palette, enabled, current){
+  document.getElementById('palette').replaceChildren(...palette.map(hex => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'swatch';
+    b.style.setProperty('--c', hex);
+    b.title = hex;
+    b.setAttribute('aria-label', 'Use ' + hex);
+    b.setAttribute('aria-pressed', String(hex === current));
+    b.disabled = !enabled;
+    b.addEventListener('click', () => applyLighting({ mode: currentEffect(), color: hex }));
+    return b;
+  }));
+}
+
+// ---- Backlight preview ----
+// Approximates each firmware effect on the drawn keys, using the same ideas as the Redragon app's
+// animation files (Cartoon/*.txt, ET/*.txt): columns, rings around the centre, rotating groups.
+// The firmware's exact timing can't be read from the keyboard, so speeds are matched by eye.
+const W_UNITS = 16, H_UNITS = 5, CX = 8, CY = 2.5;
+const RATE = { 1: 0.45, 2: 0.75, 3: 1.1, 4: 1.6 };   // speed 1 (slow) to 4 (fast)
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const fx = { effect: null, speed: 2, brightness: 0, single: null };
+const ripples = [];
+// Snake path: rows top to bottom, alternating direction.
+const SNAKE = () => LEDS.slice().sort((a, b) => Math.floor(a.cy) - Math.floor(b.cy) ||
+  (Math.floor(a.cy) % 2 ? b.cx - a.cx : a.cx - b.cx));
+let snakeOrder = null;
+
+function setPreview(effect, s){
+  fx.effect = effect ? effect.id : 0;
+  fx.speed = s.speed || 2;
+  fx.brightness = s.brightness === undefined ? (effect && effect.id === 21 ? 4 : 0) : s.brightness;
+  fx.single = effect && effect.color && !s.colourful && s.color ? s.color : null;
+}
+
+const hue = h => 'hsl(' + Math.round(((h % 1) + 1) % 1 * 360) + ' 100% 55%)';
+const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+const fade = (since, ms) => clamp01(1 - since / ms);
+
+// Returns [css colour, intensity 0-1] for one key at time t (seconds scaled by speed).
+function shade(k, t, now){
+  const dx = k.cx - CX, dy = (k.cy - CY) * 1.6, dist = Math.hypot(dx, dy), ang = Math.atan2(dy, dx) / (2 * Math.PI);
+  const pick = h => fx.single || hue(h);
+  const since = now - k.pressedAt;
+  switch (fx.effect){
+    case 1:  return [pick(k.cx / W_UNITS), 1];                                            // Fixed on
+    case 2: { const cycle = t * 0.35;                                                      // Respire
+      return [pick(Math.floor(cycle) / 7), (1 - Math.cos(cycle * 2 * Math.PI)) / 2]; }
+    case 3:  return [hue(k.cx / W_UNITS - t * 0.25), 1];                                  // Rainbow
+    case 4:  return [pick(k.seed), fade(since, 900)];                                      // Flash away
+    case 5: { const p = (t * 0.5 + k.seed * 7) % 1;                                        // Raindrops
+      return [pick(k.seed + Math.floor(t * 0.5 + k.seed * 7) * 0.37), p < 0.25 ? 1 - p / 0.25 : 0]; }
+    case 6:  return [hue(ang + t * 0.25), 1];                                             // Rainbow wheel
+    case 7: { let a = 0, c = null;                                                         // Ripples shining
+      for (const r of ripples){
+        const radius = (now - r.time) / 1000 * 7 * RATE[fx.speed];
+        const ring = clamp01(1 - Math.abs(Math.hypot(k.cx - r.x, (k.cy - r.y) * 1.6) - radius) / 0.9) * fade(now - r.time, 2200);
+        if (ring > a){ a = ring; c = r.hue; }
+      }
+      return [pick(c || 0), a]; }
+    case 8:  return [pick(k.seed * 3.1), Math.pow(clamp01(Math.sin((t * 0.45 + k.seed) * 2 * Math.PI)), 6)];  // Stars twinkle
+    case 9:  return [pick(k.cx / W_UNITS), 1 - fade(since, 1400)];                        // Shadow disappear
+    case 10: { const n = snakeOrder.length, head = (t * 9) % n;                            // Retro snake
+      const back = (head - k.snake + n) % n;
+      return [pick(t * 0.05 + back / 40), back < 9 ? 1 - back / 9 : 0]; }
+    case 11: return [pick(k.cx / W_UNITS * 0.6 - t * 0.3),                                // Neon stream
+      0.35 + 0.65 * (0.5 + 0.5 * Math.sin((k.cx / W_UNITS - t * 0.4) * 2 * Math.PI))];
+    case 12: return [pick(k.seed), k.held ? 1 : fade(since, 350)];                         // Reaction
+    case 13: return [pick(k.cy / H_UNITS * 0.5 + t * 0.1),                                // Sine wave
+      0.5 + 0.5 * Math.sin((k.cx / 5 - t * 0.6) * 2 * Math.PI + k.cy * 0.8)];
+    case 14: { const p = CX + (CX + 0.5) * Math.sin(t * 1.3);                              // Retinue scanning
+      return [pick(t * 0.05), clamp01(1 - Math.abs(k.cx - p) / 1.6)]; }
+    case 15: return [hue(ang * 2 + t * 0.1),                                               // Rotating windmill
+      Math.pow(0.5 + 0.5 * Math.cos(4 * (ang * 2 * Math.PI - t * 1.6)), 2)];
+    case 16: return [hue(k.cy / H_UNITS * 0.35 - t * 0.35 + k.cx / W_UNITS * 0.08), 1];   // Colorful waterfall
+    case 17: return [hue(dist / 9 - t * 0.3),                                              // Blossoming
+      0.4 + 0.6 * (0.5 + 0.5 * Math.cos((dist / 3 - t * 0.6) * 2 * Math.PI))];
+    case 18: return [pick(ang + dist / 10 - t * 0.3), 1];                                  // Rotating storm
+    case 19: { const cyc = (t * 0.45) % 1, p = cyc * CX;                                   // Collision
+      if (cyc > 0.92) return [pick(t * 0.45), 1];
+      return [pick(Math.floor(t * 0.45) * 0.29), Math.max(clamp01(1 - Math.abs(k.cx - p) / 1.2), clamp01(1 - Math.abs(k.cx - (W_UNITS - p)) / 1.2))]; }
+    case 20: { const ph = (t * 0.35) % 2, x = k.cx / W_UNITS;                              // Perfect
+      return [pick(x * 0.8 + Math.floor(t * 0.35) * 0.15), (ph < 1 ? x < ph : x > ph - 1) ? 1 : 0.06]; }
+    case 21: return ['#ffffff', 0.35];                                                     // Self-define: stored per-key colours aren't decoded yet
+    default: return ['transparent', 0];
+  }
+}
+
+function renderLeds(now){
+  const t = (reduceMotion.matches ? 0 : now / 1000) * RATE[fx.speed];
+  const level = fx.brightness / 4;
+  while (ripples.length && now - ripples[0].time > 2500) ripples.shift();
+  for (const k of LEDS){
+    const [color, a] = shade(k, t, now);
+    k.el.style.setProperty('--led', color);
+    k.el.style.setProperty('--led-a', (a * level * 0.95).toFixed(3));
+  }
+}
+
+function previewLoop(now){
+  if (music.on) renderMusic(now);
+  else if (fx.effect) renderLeds(now);
+  requestAnimationFrame(previewLoop);
+}
+
+// ---- Music mode ----
+// K631Live.exe listens to the PC's sound, renders one of the Redragon app's 5 music styles on the
+// keyboard's LED grid about 30 times a second, sends it to the keyboard (report 8) and sends the same
+// frame here, so the preview always matches the real keys.
+// LED slot of each drawn key: the "ledIdx" column of the Redragon app's Cfg.ini (frame bytes 3 * (slot - 1)).
+const LED_SLOT = {
+  Escape:1, Tab:2, CapsLock:3, ShiftLeft:4, ControlLeft:5, Digit1:7, KeyQ:8, KeyA:9, KeyZ:10, MetaLeft:11,
+  Digit2:13, KeyW:14, KeyS:15, KeyX:16, AltLeft:17, Digit3:19, KeyE:20, KeyD:21, KeyC:22, Digit4:25, KeyR:26,
+  KeyF:27, KeyV:28, Digit5:31, KeyT:32, KeyG:33, KeyB:34, Space:35, Digit6:37, KeyY:38, KeyH:39, KeyN:40,
+  Digit7:43, KeyU:44, KeyJ:45, KeyM:46, Digit8:49, KeyI:50, KeyK:51, Comma:52, AltRight:53, Digit9:55, KeyO:56,
+  KeyL:57, Period:58, Digit0:61, KeyP:62, Semicolon:63, Slash:64, Fn:65, Minus:67, BracketLeft:68, Quote:69,
+  ContextMenu:71, Equal:73, BracketRight:74, ShiftRight:76, ArrowLeft:77, Backspace:79, Backslash:80, Enter:81,
+  ArrowUp:82, ArrowDown:83, Delete:85, Backquote:86, PageUp:87, PageDown:88, ArrowRight:89,
+  IntlBackslash:4   // the ISO < key isn't in the app's table; in the preview it shares Left Shift's colour
+};
+const MUSIC_STYLES = [['wave','Wave'],['bars','Bars'],['bloom','Bloom'],['stream','Stream'],['pulse','Pulse']];
+const music = { on: false, style: 'wave', keys: true, frame: null, bands: new Float32Array(16), shown: new Float32Array(16), lastAudio: 0 };
+const musicSwitch = document.getElementById('music-on');
+const keysSwitch = document.getElementById('music-keys');
+const musicCard = document.getElementById('music-card');
+const musicNote = document.getElementById('music-note');
+const meterBars = [];
+for (let i = 0; i < 16; i++){
+  const bar = document.createElement('i');
+  document.getElementById('music-meter').append(bar);
+  meterBars.push(bar);
+}
+
+segment('music-style', 'music-style', MUSIC_STYLES);
+document.querySelectorAll('input[name="music-style"]').forEach(i => { i.disabled = false; i.dataset.independent = ''; });
+const showStyle = () => document.querySelectorAll('input[name="music-style"]').forEach(i => i.checked = i.value === music.style);
+showStyle();
+
+async function musicRequest(body){
+  const res = await fetch('/api/music', body
+    ? { method: 'POST', headers: { 'X-K631': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    : { headers: { 'X-K631': '1' } });
+  return res.json();
+}
+
+document.getElementById('music-style').addEventListener('change', async e => {
+  try { showMusic(await musicRequest({ style: e.target.value })); }
+  catch { setMusicNote('Music mode needs K631Live.exe running.', true); }
+});
+
+function onAudio(d){
+  d.b.forEach((v, i) => music.bands[i] = v / 100);
+  music.frame = d.f || null;
+  music.lastAudio = performance.now();
+}
+
+function setMusicNote(text, isError){
+  musicNote.textContent = text;
+  musicNote.classList.toggle('error', !!isError);
+}
+
+// state from K631Live.exe: { on, style, keys, keysError }
+function showMusic(state){
+  const was = music.on;
+  music.on = !!state.on;
+  if (state.style){ music.style = state.style; showStyle(); }
+  if (typeof state.keys === 'boolean'){ music.keys = state.keys; keysSwitch.checked = state.keys; }
+  if (music.on && state.keysError) setMusicNote(state.keysError, true);
+  musicSwitch.checked = music.on;
+  musicCard.classList.toggle('on', music.on);
+  lightingPanel.classList.toggle('music-active', music.on);
+  document.getElementById('effect-name').textContent = music.on
+    ? 'Music mode is on · pick an effect to stop it'
+    : (EFFECTS.find(e => lastLighting && e.id === lastLighting.mode) || { name: '–' }).name;
+  if (music.on) lockForMusic();
+  else if (was && lastLighting) showState(lastLighting);   // unlock the effect settings
+  if (!music.on){
+    music.bands.fill(0);
+    music.shown.fill(0);
+    music.frame = null;
+    meterBars.forEach(b => b.style.setProperty('--l', 0.04));
+    LEDS.forEach(k => k.el.style.setProperty('--led-a', 0));   // the effect preview takes over again
+  }
+}
+
+// Music mode and the keyboard's own effect never run together: turning music on switches the
+// keyboard's lights off (brightness 0 on the current effect), turning it off puts that brightness back.
+// The brightness to restore is kept in the browser, so it survives a reload or music stopping by itself.
+const RESTORE_KEY = 'k631-music-restore';
+function readRestore(){
+  try { return JSON.parse(localStorage.getItem(RESTORE_KEY)); } catch { return null; }
+}
+function writeRestore(value){
+  try { value ? localStorage.setItem(RESTORE_KEY, JSON.stringify(value)) : localStorage.removeItem(RESTORE_KEY); }
+  catch { /* storage unavailable */ }
+}
+
+async function darkenKeyboard(){
+  const s = lastLighting;
+  const effect = s && EFFECTS.find(e => e.id === s.mode);
+  if (!effect || !effect.light || !(s.brightness > 0)) return false;
+  writeRestore({ mode: s.mode, brightness: s.brightness });
+  await applyLighting({ mode: s.mode, brightness: 0 });
+  return true;
+}
+
+async function restoreKeyboard(){
+  const r = readRestore();
+  if (!r) return;
+  writeRestore(null);
+  await applyLighting({ mode: r.mode, brightness: r.brightness });
+}
+
+const MUSIC_IDLE = 'Makes the keys dance to whatever your PC is playing. Turning it on pauses the keyboard’s own effect.';
+
+function musicOnNote(r){
+  return r.keys
+    ? 'Listening to your PC’s sound. The keyboard follows the music; its own effect comes back when you stop.'
+    : 'Listening to your PC’s sound (preview only). The keyboard’s own effect is off until you stop.';
+}
+
+async function setMusic(on){
+  musicSwitch.disabled = true;
+  try {
+    const r = await musicRequest({ on });
+    showMusic(r);
+    if (!r.ok) setMusicNote(r.error, true);
+    else if (r.on){
+      // With the real keys following the music, its frames replace the effect. Preview-only music
+      // switches the keyboard's effect off instead, so the two never show at once.
+      if (!r.keys) await darkenKeyboard();
+      if (!r.keysError) setMusicNote(musicOnNote(r));
+    } else {
+      await restoreKeyboard();
+      setMusicNote(MUSIC_IDLE);
+    }
+  } catch {
+    showMusic({ on: false });
+    setMusicNote('Music mode needs K631Live.exe running.', true);
+  }
+  musicSwitch.disabled = false;
+}
+
+musicSwitch.addEventListener('change', () => setMusic(musicSwitch.checked));
+
+keysSwitch.addEventListener('change', async () => {
+  keysSwitch.disabled = true;
+  try {
+    const r = await musicRequest({ keys: keysSwitch.checked });
+    showMusic(r);
+    if (r.on){
+      if (r.keys) await restoreKeyboard();   // the keyboard shows the music frames again
+      else await darkenKeyboard();           // keyboard back on its effect: switch that off while music plays
+      if (!r.keysError) setMusicNote(musicOnNote(r));
+    }
+  } catch { setMusicNote('Music mode needs K631Live.exe running.', true); }
+  keysSwitch.disabled = false;
+});
+
+// Paints the frame K631Live.exe sent (the same one the keyboard shows).
+function renderMusic(now){
+  if (now - music.lastAudio > 400){ music.bands.fill(0); music.frame = null; }
+  for (let i = 0; i < 16; i++){
+    const target = music.bands[i];
+    music.shown[i] = target > music.shown[i] ? target : music.shown[i] * 0.85 + target * 0.15;
+    meterBars[i].style.setProperty('--l', Math.max(0.04, music.shown[i]).toFixed(3));
+  }
+  const f = music.frame;
+  for (const k of LEDS){
+    const slot = LED_SLOT[k.code];
+    let r = 0, g = 0, b = 0;
+    if (f && slot){
+      const i = (slot - 1) * 6;
+      r = parseInt(f.substr(i, 2), 16); g = parseInt(f.substr(i + 2, 2), 16); b = parseInt(f.substr(i + 4, 2), 16);
+    }
+    const m = Math.max(r, g, b);
+    // Full-strength colour for the hue, brightness through the glow's opacity.
+    k.el.style.setProperty('--led', m ? 'rgb(' + Math.round(r * 255 / m) + ' ' + Math.round(g * 255 / m) + ' ' + Math.round(b * 255 / m) + ')' : 'transparent');
+    k.el.style.setProperty('--led-a', (m / 255 * 0.95).toFixed(3));
+  }
+}
+
+if (location.protocol.startsWith('http')){
+  musicRequest().then(r => {
+    showMusic(r);
+    if (r.on) setMusicNote(r.keysError || musicOnNote(r), !!r.keysError);
+    // Music mode stopped while no page was open: give the keyboard its effect back.
+    else restoreKeyboard();
+  }).catch(() => {});
+} else {
+  musicSwitch.disabled = true;
+  keysSwitch.disabled = true;
+  setMusicNote('Music mode needs K631Live.exe running.', true);
+}
+
+function ledPressed(key){
+  key.pressedAt = performance.now();
+  key.held = true;
+  ripples.push({ x: key.cx, y: key.cy, time: key.pressedAt, hue: Math.random() });
+}
+
+snakeOrder = SNAKE();
+snakeOrder.forEach((k, i) => k.snake = i);
+requestAnimationFrame(previewLoop);
+
+async function lightingRequest(body){
+  const res = await fetch('/api/lighting', {
+    method: body ? 'POST' : 'GET',
+    headers: body ? { 'X-K631': '1', 'Content-Type': 'application/json' } : { 'X-K631': '1' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!res.ok) throw new Error('Server answered ' + res.status);
+  return res.json();
+}
+
+async function loadLighting(){
+  try {
+    const s = await lightingRequest();
+    if (!s.ok){ setLightingDisabled(true); setNote(s.error, true); return; }
+    showState(s);
+    setNote('Read from the keyboard. Changes apply immediately.');
+  } catch {
+    setLightingDisabled(true);
+    setNote('Lighting control needs K631Live.exe running.', true);
+  }
+}
+
+async function applyLighting(body){
+  setLightingDisabled(true);
+  setNote('Saving to the keyboard…');
+  try {
+    const s = await lightingRequest(body);
+    if (!s.ok){ setNote(s.error, true); await loadLighting(); return; }
+    showState(s);
+    setNote(s.changed && s.changed.length ? 'Saved to the keyboard.' : 'Already set. Nothing to change.');
+  } catch {
+    setNote('Lighting control needs K631Live.exe running.', true);
+  }
+}
+
+effectsBox.addEventListener('change', async e => {
+  const mode = +e.target.value;
+  if (music.on) await setMusic(false);   // an effect and music mode never run together
+  applyLighting({ mode });
+});
+document.getElementById('brightness').addEventListener('change', e => applyLighting({ mode: currentEffect(), brightness: +e.target.value }));
+document.getElementById('speed').addEventListener('change', e => applyLighting({ mode: currentEffect(), speed: +e.target.value }));
+color.addEventListener('change', () => applyLighting({ mode: currentEffect(), color: color.value }));
+colourful.addEventListener('click', () => applyLighting({
+  mode: currentEffect(),
+  color: colourful.getAttribute('aria-pressed') === 'true' ? color.value : 'colourful'
+}));
+
+if (location.protocol.startsWith('http')) loadLighting();
+else { setLightingDisabled(true); setNote('Lighting control needs K631Live.exe running.', true); }
+
+// ---- Custom layout ----
+// Character keys: physical code -> [Set-1 scan code, virtual key in Windows' French layout (kbdfr)].
+const CHAR_KEYS = {
+  Backquote:['29','OEM_7'], Digit1:['02','1'], Digit2:['03','2'], Digit3:['04','3'], Digit4:['05','4'],
+  Digit5:['06','5'], Digit6:['07','6'], Digit7:['08','7'], Digit8:['09','8'], Digit9:['0a','9'], Digit0:['0b','0'],
+  Minus:['0c','OEM_4'], Equal:['0d','OEM_PLUS'],
+  KeyQ:['10','A'], KeyW:['11','Z'], KeyE:['12','E'], KeyR:['13','R'], KeyT:['14','T'], KeyY:['15','Y'],
+  KeyU:['16','U'], KeyI:['17','I'], KeyO:['18','O'], KeyP:['19','P'], BracketLeft:['1a','OEM_6'], BracketRight:['1b','OEM_1'],
+  KeyA:['1e','Q'], KeyS:['1f','S'], KeyD:['20','D'], KeyF:['21','F'], KeyG:['22','G'], KeyH:['23','H'],
+  KeyJ:['24','J'], KeyK:['25','K'], KeyL:['26','L'], Semicolon:['27','M'], Quote:['28','OEM_3'], Backslash:['2b','OEM_5'],
+  IntlBackslash:['56','OEM_102'], KeyZ:['2c','W'], KeyX:['2d','X'], KeyC:['2e','C'], KeyV:['2f','V'], KeyB:['30','B'],
+  KeyN:['31','N'], KeyM:['32','OEM_COMMA'], Comma:['33','OEM_PERIOD'], Period:['34','OEM_2'], Slash:['35','OEM_8']
+};
+
+// Windows French AZERTY: [normal, Shift, Alt Gr, accent (dead) layers].
+const AZERTY = {
+  Backquote:['²','',''], Digit1:['&','1',''], Digit2:['é','2','~','a'], Digit3:['"','3','#'], Digit4:["'",'4','{'],
+  Digit5:['(','5','['], Digit6:['-','6','|'], Digit7:['è','7','`','a'], Digit8:['_','8','\\'], Digit9:['ç','9','^'],
+  Digit0:['à','0','@'], Minus:[')','°',']'], Equal:['=','+','}'],
+  KeyQ:['a','A',''], KeyW:['z','Z',''], KeyE:['e','E','€'], KeyR:['r','R',''], KeyT:['t','T',''], KeyY:['y','Y',''],
+  KeyU:['u','U',''], KeyI:['i','I',''], KeyO:['o','O',''], KeyP:['p','P',''], BracketLeft:['^','¨','','ns'], BracketRight:['$','£','¤'],
+  KeyA:['q','Q',''], KeyS:['s','S',''], KeyD:['d','D',''], KeyF:['f','F',''], KeyG:['g','G',''], KeyH:['h','H',''],
+  KeyJ:['j','J',''], KeyK:['k','K',''], KeyL:['l','L',''], Semicolon:['m','M',''], Quote:['ù','%',''], Backslash:['*','µ',''],
+  IntlBackslash:['<','>',''], KeyZ:['w','W',''], KeyX:['x','X',''], KeyC:['c','C',''], KeyV:['v','V',''], KeyB:['b','B',''],
+  KeyN:['n','N',''], KeyM:[',','?',''], Comma:[';','.',''], Period:[':','/',''], Slash:['!','§','']
+};
+
+// Characters that can be accent (dead) keys, with the combining mark they add to the next letter.
+const ACCENTS = {
+  '^':['̂','CIRCUMFLEX ACCENT'], '¨':['̈','DIAERESIS'], '~':['̃','TILDE'],
+  '`':['̀','GRAVE ACCENT'], '´':['́','ACUTE ACCENT']
+};
+
+function preset(name){
+  const keys = {};
+  for (const code in AZERTY){
+    const [n, s, a, dead = ''] = AZERTY[code];
+    keys[code] = { n, s, a, dead };
+  }
+  if (name === 'digits') flipNumberRow(keys);
+  return { name: name === 'digits' ? 'AZERTY, digits first' : 'AZERTY', keys };
+}
+
+const NUMBER_ROW = ['Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7','Digit8','Digit9','Digit0'];
+
+// Swaps Normal and Shift on the number row only (digits first <-> symbols first); Alt Gr and
+// every other key stay as they are.
+function flipNumberRow(keys){
+  for (const code of NUMBER_ROW){
+    const k = keys[code];
+    keys[code] = { n: k.s, s: k.n, a: k.a, dead: k.dead.replace(/[ns]/g, l => l === 'n' ? 's' : 'n') };
+  }
+}
+
+const digitsFirst = keys => /^[0-9]$/.test(keys.Digit1.n);
+
+let layout = preset('digits');
+let editing = false;
+let selectedCode = null;
+
+const layoutNote = document.getElementById('layout-note');
+const editBtn = document.getElementById('edit-layout');
+const presetSel = document.getElementById('preset');
+const keyEditor = document.getElementById('key-editor');
+const layerInputs = { n: document.getElementById('layer-n'), s: document.getElementById('layer-s'), a: document.getElementById('layer-a') };
+const deadBoxes = { n: document.getElementById('dead-n'), s: document.getElementById('dead-s'), a: document.getElementById('dead-a') };
+
+function setLayoutNote(text, isError){
+  layoutNote.textContent = text;
+  layoutNote.classList.toggle('error', !!isError);
+}
+
+const escapeHtml = s => s.replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' })[c]);
+
+// Keycap legends: the big legend is what the key types (capital for letters); the small one lists Shift and Alt Gr.
+function legendsFor(k){
+  const isLetter = k.n && k.n !== k.n.toUpperCase() && k.s === k.n.toUpperCase();
+  const big = isLetter ? k.s : k.n;
+  const small = [isLetter ? '' : k.s, k.a].filter(Boolean).join(' ');
+  return { big, small };
+}
+
+function applyLayout(){
+  for (const code in CHAR_KEYS){
+    const key = byCode[code], k = layout.keys[code];
+    if (!key || !k) continue;
+    const { big, small } = legendsFor(k);
+    key.m = big ? escapeHtml(big) : '';
+    key.s = small ? escapeHtml(small) : undefined;
+    key.n = [big, small].filter(Boolean).join('  ') || 'Empty key';
+    key.cap.innerHTML = legend(key);
+    key.el.setAttribute('aria-label', key.n);
+  }
+  document.getElementById('number-row').setAttribute('aria-pressed', String(digitsFirst(layout.keys)));
+  document.getElementById('layout-name').textContent = layout.name +
+    (layout.exportVersion ? ' · last export v' + layout.exportVersion : ' · not exported yet');
+}
+
+let saveTimer = 0;
+function saveLayout(){
+  if (!location.protocol.startsWith('http')) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      const res = await fetch('/api/layout', { method: 'POST', headers: { 'X-K631': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(layout) });
+      const r = await res.json();
+      if (!r.ok) setLayoutNote('Could not save the layout: ' + r.error, true);
+    } catch { setLayoutNote('Could not save the layout. Is K631Live.exe running?', true); }
+  }, 300);
+}
+
+async function loadLayout(){
+  if (!location.protocol.startsWith('http')) return;
+  try {
+    const res = await fetch('/api/layout', { headers: { 'X-K631': '1' } });
+    const saved = await res.json();
+    if (saved && saved.keys){
+      // Fill anything missing from the default so an old or partial file still works.
+      const base = preset('digits');
+      for (const code in CHAR_KEYS){
+        const k = saved.keys[code];
+        if (k && typeof k.n === 'string' && typeof k.s === 'string' && typeof k.a === 'string')
+          base.keys[code] = { n: k.n, s: k.s, a: k.a, dead: typeof k.dead === 'string' ? k.dead : '' };
+      }
+      base.name = typeof saved.name === 'string' ? saved.name : 'Custom';
+      if (Number.isInteger(saved.exportVersion)) base.exportVersion = saved.exportVersion;
+      layout = base;
+      applyLayout();
+    }
+  } catch { /* keep the default */ }
+}
+
+function swapKeys(from, to){
+  const a = layout.keys[from];
+  layout.keys[from] = layout.keys[to];
+  layout.keys[to] = a;
+  layout.name = 'Custom';
+  applyLayout();
+  saveLayout();
+  setLayoutNote('Swapped. Export the Windows layout to start typing with it.');
+  if (selectedCode === from || selectedCode === to) openKeyEditor(selectedCode);
+}
+
+function setEditing(on){
+  editing = on;
+  board.classList.toggle('editing', on);
+  editBtn.setAttribute('aria-pressed', String(on));
+  editBtn.querySelector('span').textContent = on ? 'Done editing' : 'Edit layout';
+  for (const code in CHAR_KEYS) if (byCode[code]) byCode[code].el.draggable = on;
+  if (!on) closeKeyEditor();
+}
+
+function openKeyEditor(code){
+  if (selectedCode && byCode[selectedCode]) byCode[selectedCode].el.classList.remove('selected');
+  selectedCode = code;
+  byCode[code].el.classList.add('selected');
+  const k = layout.keys[code];
+  document.getElementById('key-name').textContent = 'the key that types ' + (legendsFor(k).big || '(nothing)');
+  for (const layer of ['n','s','a']){
+    layerInputs[layer].value = k[layer];
+    deadBoxes[layer].checked = k.dead.includes(layer);
+    syncDeadBox(layer);
+  }
+  keyEditor.hidden = false;
+  layerInputs.n.focus();
+  layerInputs.n.select();
+}
+
+function closeKeyEditor(){
+  if (selectedCode && byCode[selectedCode]) byCode[selectedCode].el.classList.remove('selected');
+  selectedCode = null;
+  keyEditor.hidden = true;
+}
+
+// "Accent key" only makes sense for accent characters.
+function syncDeadBox(layer){
+  const ok = ACCENTS.hasOwnProperty(layerInputs[layer].value);
+  deadBoxes[layer].disabled = !ok;
+  if (!ok) deadBoxes[layer].checked = false;
+}
+
+for (const layer of ['n','s','a']) layerInputs[layer].addEventListener('input', () => syncDeadBox(layer));
+
+keyEditor.addEventListener('submit', e => {
+  e.preventDefault();
+  const next = { dead: '' };
+  for (const layer of ['n','s','a']){
+    const v = layerInputs[layer].value;
+    const chars = [...v];
+    if (chars.length > 1 || (v && v.codePointAt(0) > 0xFFFF)){
+      setLayoutNote('Each box takes one character (emoji and other characters outside the basic range are not supported by Windows layouts).', true);
+      layerInputs[layer].focus();
+      return;
+    }
+    next[layer] = v;
+    if (deadBoxes[layer].checked) next.dead += layer;
+  }
+  layout.keys[selectedCode] = next;
+  layout.name = 'Custom';
+  applyLayout();
+  saveLayout();
+  setLayoutNote('Key updated. Export the Windows layout to start typing with it.');
+  closeKeyEditor();
+});
+document.getElementById('cancel-key').addEventListener('click', closeKeyEditor);
+
+editBtn.addEventListener('click', () => setEditing(!editing));
+
+document.getElementById('number-row').addEventListener('click', () => {
+  flipNumberRow(layout.keys);
+  layout.name = 'Custom';
+  applyLayout();
+  saveLayout();
+  if (selectedCode) openKeyEditor(selectedCode);
+  setLayoutNote(digitsFirst(layout.keys)
+    ? 'Number row now types digits without Shift; the symbols are on Shift. Export the Windows layout to use it.'
+    : 'Number row back to AZERTY symbols; digits are on Shift. Export the Windows layout to use it.');
+});
+
+presetSel.addEventListener('change', () => {
+  if (!presetSel.value) return;
+  const exportVersion = layout.exportVersion;
+  layout = preset(presetSel.value);
+  if (exportVersion) layout.exportVersion = exportVersion;
+  presetSel.value = '';
+  applyLayout();
+  saveLayout();
+  closeKeyEditor();
+  setLayoutNote('Layout reset to ' + layout.name + '.');
+});
+
+// Drag a key onto another to swap what they type; click a key to edit it.
+for (const code in CHAR_KEYS){
+  const key = byCode[code];
+  if (!key) continue;
+  const el = key.el;
+  el.classList.add('editable');
+  el.addEventListener('dragstart', e => {
+    if (!editing){ e.preventDefault(); return; }
+    e.dataTransfer.setData('text/x-k631-key', code);
+    e.dataTransfer.effectAllowed = 'move';
+    el.classList.add('dragging');
+  });
+  el.addEventListener('dragend', () => el.classList.remove('dragging'));
+  el.addEventListener('dragover', e => {
+    if (!editing || !e.dataTransfer.types.includes('text/x-k631-key')) return;
+    e.preventDefault();
+    el.classList.add('drop-target');
+  });
+  el.addEventListener('dragleave', () => el.classList.remove('drop-target'));
+  el.addEventListener('drop', e => {
+    e.preventDefault();
+    el.classList.remove('drop-target');
+    const from = e.dataTransfer.getData('text/x-k631-key');
+    if (from && from !== code && layout.keys[from]) swapKeys(from, code);
+  });
+  el.addEventListener('click', () => { if (editing) openKeyEditor(code); });
+  el.addEventListener('keydown', e => {
+    if (editing && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); e.stopPropagation(); openKeyEditor(code); }
+  });
+}
+
+// ---- Windows layout export (.klc for Microsoft Keyboard Layout Creator) ----
+const hex4 = c => c.codePointAt(0).toString(16).padStart(4, '0');
+const klcCell = (c, dead) => c ? hex4(c) + (dead ? '@' : '') : '-1';
+
+function assignVirtualKeys(){
+  // Letters keep their own VK so shortcuts like Ctrl+C follow the letter; other keys keep the AZERTY VK.
+  const vk = {}, used = new Set();
+  for (const code in CHAR_KEYS){
+    const n = layout.keys[code].n;
+    if (/^[a-z]$/.test(n) && !used.has(n.toUpperCase())){ vk[code] = n.toUpperCase(); used.add(vk[code]); }
+  }
+  for (const code in CHAR_KEYS){
+    if (vk[code]) continue;
+    const original = CHAR_KEYS[code][1];
+    if (!used.has(original)){ vk[code] = original; used.add(original); }
+  }
+  const pool = ['OEM_1','OEM_2','OEM_3','OEM_4','OEM_5','OEM_6','OEM_7','OEM_8','OEM_102','OEM_PLUS','OEM_COMMA','OEM_MINUS','OEM_PERIOD', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'];
+  for (const code in CHAR_KEYS){
+    if (vk[code]) continue;
+    vk[code] = pool.find(v => !used.has(v));
+    used.add(vk[code]);
+  }
+  return vk;
+}
+
+// Accented letters limited to Windows-1252, like the standard French layout, so older non-Unicode
+// programs can show every letter the accent keys produce.
+const inCp1252 = c => c.codePointAt(0) <= 0xFF || 'ŠšŽžŒœŸ'.includes(c);
+
+function deadKeyTable(accent){
+  const [mark] = ACCENTS[accent];
+  const rows = [];
+  for (const base of 'aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ'){
+    const composed = (base + mark).normalize('NFC');
+    if ([...composed].length === 1 && composed !== base && inCp1252(composed))
+      rows.push(hex4(base) + '\t' + hex4(composed) + '\t// ' + base + ' -> ' + composed);
+  }
+  rows.push('0020\t' + hex4(accent) + '\t// space -> ' + accent);
+  return 'DEADKEY\t' + hex4(accent) + '\r\n\r\n' + rows.join('\r\n') + '\r\n\r\n';
+}
+
+const KEYNAMES = [['01','Esc'],['0e','Backspace'],['0f','Tab'],['1c','Enter'],['1d','Ctrl'],['2a','Shift'],['36','"Right Shift"'],
+  ['37','"Num *"'],['38','Alt'],['39','Space'],['3a','"Caps Lock"'],['3b','F1'],['3c','F2'],['3d','F3'],['3e','F4'],['3f','F5'],
+  ['40','F6'],['41','F7'],['42','F8'],['43','F9'],['44','F10'],['45','Pause'],['46','"Scroll Lock"'],['47','"Num 7"'],['48','"Num 8"'],
+  ['49','"Num 9"'],['4a','"Num -"'],['4b','"Num 4"'],['4c','"Num 5"'],['4d','"Num 6"'],['4e','"Num +"'],['4f','"Num 1"'],['50','"Num 2"'],
+  ['51','"Num 3"'],['52','"Num 0"'],['53','"Num Del"'],['54','"Sys Req"'],['57','F11'],['58','F12']];
+const KEYNAMES_EXT = [['1c','"Num Enter"'],['1d','"Right Ctrl"'],['35','"Num /"'],['37','"Prnt Scrn"'],['38','"Right Alt"'],
+  ['45','"Num Lock"'],['46','Break'],['47','Home'],['48','Up'],['49','"Page Up"'],['4b','Left'],['4d','Right'],['4f','End'],
+  ['50','Down'],['51','"Page Down"'],['52','Insert'],['53','Delete'],['54','<00>'],['56','Help'],['5b','"Left Windows"'],
+  ['5c','"Right Windows"'],['5d','Application']];
+
+// Windows refuses to install a layout whose name or description is already installed, so each export
+// gets its own: K631V002 / "French - K631 custom v2", and so on. (v1 was the first build, K631AZ.)
+function exportNames(version){
+  return { kbd: 'K631V' + String(version).padStart(3, '0'), description: 'French - K631 custom v' + version };
+}
+
+function buildKlc(version){
+  const { kbd, description } = exportNames(version);
+  const vk = assignVirtualKeys();
+  const nl = '\r\n';
+  const rows = [];
+  const accents = new Set();
+  for (const code in CHAR_KEYS){
+    const k = layout.keys[code];
+    // Caps Lock acts like Shift only where Shift gives the capital of the normal letter.
+    const cap = k.n && k.n !== k.s && k.n.toUpperCase() === k.s ? '1' : '0';
+    for (const layer of ['n','s','a']) if (k.dead.includes(layer) && k[layer]) accents.add(k[layer]);
+    rows.push([CHAR_KEYS[code][0], vk[code], '', cap,
+      klcCell(k.n, k.dead.includes('n')), klcCell(k.s, k.dead.includes('s')), '-1',
+      klcCell(k.a, k.dead.includes('a')), '-1'].join('\t') +
+      '\t\t// ' + [k.n, k.s, k.a].map(c => c || '<none>').join(', '));
+  }
+  rows.push('39\tSPACE\t\t0\t0020\t0020\t0020\t-1\t-1\t\t// space');
+  rows.push('53\tDECIMAL\t\t0\t002e\t002e\t-1\t-1\t-1\t\t// numpad decimal');
+
+  let text = 'KBD\t' + kbd + '\t"' + description + '"' + nl + nl +
+    'COPYRIGHT\t"(c) ' + new Date().getFullYear() + '"' + nl + nl +
+    'COMPANY\t"K631 Live"' + nl + nl +
+    'LOCALENAME\t"fr-FR"' + nl + nl +
+    'LOCALEID\t"0000040c"' + nl + nl +
+    'VERSION\t1.0' + nl + nl +
+    'SHIFTSTATE' + nl + nl +
+    '0\t//Column 4' + nl + '1\t//Column 5 : Shft' + nl + '2\t//Column 6 :       Ctrl' + nl +
+    '6\t//Column 7 :       Ctrl Alt' + nl + '7\t//Column 8 : Shft  Ctrl Alt' + nl + nl +
+    'LAYOUT\t\t;an extra \'@\' at the end is a dead key' + nl + nl +
+    '//SC\tVK_\t\tCap\t0\t1\t2\t6\t7' + nl +
+    '//--\t----\t\t----\t----\t----\t----\t----\t----' + nl + nl +
+    rows.join(nl) + nl + nl;
+  for (const accent of accents) text += deadKeyTable(accent);
+  text += 'KEYNAME' + nl + nl + KEYNAMES.map(r => r.join('\t')).join(nl) + nl + nl;
+  text += 'KEYNAME_EXT' + nl + nl + KEYNAMES_EXT.map(r => r.join('\t')).join(nl) + nl + nl;
+  if (accents.size) text += 'KEYNAME_DEAD' + nl + nl + [...accents].map(a => hex4(a) + '\t"' + ACCENTS[a][1] + '"').join(nl) + nl + nl;
+  text += 'DESCRIPTIONS' + nl + nl + '0409\t' + description + nl + nl +
+    'LANGUAGENAMES' + nl + nl + '0409\tFrench (France)' + nl + nl +
+    'ENDKBD' + nl;
+  return text;
+}
+
+document.getElementById('export-layout').addEventListener('click', async () => {
+  if (!location.protocol.startsWith('http')){ setLayoutNote('Export needs K631Live.exe running.', true); return; }
+  setLayoutNote('Exporting…');
+  const version = (Number.isInteger(layout.exportVersion) ? layout.exportVersion : 1) + 1;
+  try {
+    const res = await fetch('/api/layout/klc', { method: 'POST', headers: { 'X-K631': '1', 'Content-Type': 'text/plain; charset=utf-8' }, body: buildKlc(version) });
+    const r = await res.json();
+    if (!r.ok){ setLayoutNote('Export failed: ' + r.error, true); return; }
+    layout.exportVersion = version;
+    saveLayout();
+    applyLayout();
+    const { kbd, description } = exportNames(version);
+    setLayoutNote('Saved ' + r.path + ' as "' + description + '" (' + kbd + '). Load it in Microsoft Keyboard Layout Creator, then Project → Build DLL and Setup Package.');
+  } catch { setLayoutNote('Export failed. Is K631Live.exe running?', true); }
+});
+
+applyLayout();
+loadLayout();
+
+// Lets the page scroll focused controls clear of the pinned keyboard.
+const dock = document.querySelector('.dock');
+new ResizeObserver(() => document.documentElement.style.setProperty('--dock-h', dock.offsetHeight + 'px')).observe(dock);
+
+// ---- Tabs ----
+const tabs = [...document.querySelectorAll('[role="tab"]')];
+
+function selectTab(tab, focus){
+  for (const t of tabs){
+    const on = t === tab;
+    t.setAttribute('aria-selected', String(on));
+    t.tabIndex = on ? 0 : -1;
+    document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+  }
+  if (focus) tab.focus();
+  // Leaving the Layout tab ends editing, so keys don't stay in drag mode out of sight.
+  if (tab.id !== 'tab-layout' && editing) setEditing(false);
+  try { localStorage.setItem('k631-tab', tab.id); } catch { /* storage unavailable */ }
+}
+
+tabs.forEach((t, i) => {
+  t.addEventListener('click', () => selectTab(t));
+  t.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    selectTab(tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length], true);
+  });
+});
+
+try {
+  const saved = document.getElementById(localStorage.getItem('k631-tab') || '');
+  if (saved && tabs.includes(saved)) selectTab(saved);
+} catch { /* storage unavailable */ }
+</script>
+
+<style>
+/* Guided tour bar, pinned to the bottom; uses the app's own tokens so it follows light and dark. */
+.wrap{padding-bottom:230px;}
+.tour{
+  position:fixed; left:0; right:0; bottom:0; z-index:30;
+  padding-block:14px calc(14px + env(safe-area-inset-bottom, 0px));
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+  background:color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  border-top:1px solid var(--line);
+  box-shadow:0 -8px 24px rgba(10, 20, 25, .08);
+}
+.tour-progress{position:absolute; left:0; right:0; top:-1px; height:3px; background:var(--line);}
+.tour-progress span{display:block; height:100%; width:0; background:var(--accent); transition:width .4s ease;}
+.tour-inner{max-width:1040px; margin:0 auto; display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:10px 24px; align-items:center;}
+.tour-body{min-width:0; display:flex; flex-direction:column; gap:3px;}
+.tour-step{margin:0; font-size:.75rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); font-variant-numeric:tabular-nums;}
+.tour-title{margin:0; font-size:1.1rem; font-weight:700; text-wrap:balance;}
+.tour-text{margin:0; font-size:.95rem; line-height:1.45; color:var(--muted); max-width:70ch;}
+.tour-controls{display:flex; align-items:center; gap:8px;}
+.tbtn{
+  display:inline-grid; place-items:center; width:42px; height:42px; padding:0; border-radius:50%; cursor:pointer;
+  background:var(--surface-2); color:var(--text); border:1px solid var(--line);
+}
+.tbtn svg{width:18px; height:18px;}
+.tbtn.primary{width:50px; height:50px; background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
+.tbtn.primary svg{width:20px; height:20px;}
+.tbtn:disabled{opacity:.4; cursor:default;}
+.tbtn:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+.tour-restart{
+  font:inherit; font-size:.88rem; font-weight:600; padding:8px 12px; border-radius:9px; cursor:pointer;
+  background:transparent; color:var(--muted); border:1px solid transparent;
+}
+.tour-restart:hover{color:var(--text); border-color:var(--line);}
+.tour-focus{outline:3px solid var(--accent) !important; outline-offset:6px; border-radius:16px;}
+.demo-ribbon{
+  display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px;
+  background:var(--accent-soft); color:var(--accent); font-size:.78rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+}
+@media (max-width:640px){
+  .wrap{padding-bottom:300px;}
+  .tour-inner{grid-template-columns:1fr;}
+  .tour-controls{justify-content:space-between;}
+}
+@media (prefers-reduced-motion: reduce){ .tour-progress span{transition:none;} }
+</style>
+
+<aside class="tour" id="tour" aria-label="Guided demo">
+  <div class="tour-progress" aria-hidden="true"><span id="tour-bar"></span></div>
+  <div class="tour-inner">
+    <div class="tour-body">
+      <p class="tour-step" id="tour-step">Step 1 of 11</p>
+      <h2 class="tour-title" id="tour-title">Meet K631 Live</h2>
+      <p class="tour-text" id="tour-text" aria-live="polite">Loading the demo…</p>
+    </div>
+    <div class="tour-controls">
+      <button type="button" class="tbtn" id="tour-prev" aria-label="Previous step"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <button type="button" class="tbtn primary" id="tour-play" aria-label="Pause"><svg viewBox="0 0 24 24" id="tour-play-icon"><path d="M9 6v12M15 6v12"/></svg></button>
+      <button type="button" class="tbtn" id="tour-next" aria-label="Next step"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+      <button type="button" class="tour-restart" id="tour-restart">Restart</button>
+    </div>
+  </div>
+</aside>
+
+<script>
+// Guided tour: drives the real K631 Live page (against the simulated keyboard in demo-shim.js).
+(() => {
+  const $ = id => document.getElementById(id);
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let index = 0, token = 0, playing = !reduceMotion, stepDone = false, tookOver = false;
+  const ringed = new Set();
+  class Cancelled extends Error {}
+
+  // Be honest in the header: this is the demo keyboard, not a real one.
+  const appSetStatus = setStatus;
+  setStatus = (state, text) => appSetStatus(state, state === 'live' ? 'Demo · simulated K631' : text);
+  document.querySelector('.brand small').textContent = 'Interactive demo · no keyboard needed';
+
+  // ---- Helpers that act on the page like a person would ----
+  const scrollMode = reduceMotion ? 'auto' : 'smooth';
+  function ring(el){
+    if (!el) return;
+    el.classList.add('tour-focus');
+    ringed.add(el);
+    el.scrollIntoView({ behavior: scrollMode, block: 'center' });
+  }
+  const tab = name => $('tab-' + name).click();
+  function choose(name, value){
+    const input = document.querySelector('input[name="' + name + '"][value="' + value + '"]');
+    if (!input || input.disabled) return;
+    input.checked = true;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  async function musicOff(){ if (music.on) await setMusic(false); }
+  async function type(codes, w){
+    for (const code of codes){ await demoKeyboard.press(code); await w(110); }
+  }
+  const top = () => window.scrollTo({ top: 0, behavior: scrollMode });
+
+  const STEPS = [
+    { title: 'Meet K631 Live',
+      text: 'A Windows companion for the Redragon K631 RGB PRO. This demo runs the real app against a simulated keyboard, so nothing needs installing.',
+      run: async w => { tab('lighting'); top(); await w(600); ring(document.querySelector('.case')); await w(5500); } },
+    { title: 'Every key, live',
+      text: 'Each key you press lights up on the drawing, even while the window is in the background. Fn combinations light Fn too: Fn + 1 sends F1.',
+      run: async w => {
+        await musicOff(); tab('lighting'); top(); await w(500);
+        ring(document.querySelector('.case'));
+        await type(['KeyK', 'Digit6', 'Digit3', 'Digit1', 'Space', 'KeyL', 'KeyI', 'KeyV', 'KeyE'], w);
+        await w(700); await demoKeyboard.press('F1', 600); await w(500);
+        await demoKeyboard.press('AudioVolumeUp', 600); await w(2600);
+      } },
+    { title: '21 built-in effects',
+      text: 'Click a tile and the keyboard switches at once, while the drawing previews the effect. Here: Rainbow, Neon stream, Rotating storm.',
+      run: async w => {
+        await musicOff(); tab('lighting'); await w(300);
+        ring($('effects').closest('.card')); await w(900);
+        choose('effect', 3); await w(2800);
+        choose('effect', 11); await w(2800);
+        choose('effect', 18); await w(2800);
+      } },
+    { title: 'Brightness and speed',
+      text: 'Brightness has five steps from Off to 4, speed four from Slow to Fastest. Controls an effect doesn’t use are greyed out.',
+      run: async w => {
+        await musicOff(); tab('lighting'); choose('effect', 3); await w(900);
+        ring(document.querySelector('.settings')); await w(700);
+        choose('speed', 4); await w(1900);
+        choose('brightness', 1); await w(1700);
+        choose('brightness', 4); await w(1700);
+        choose('speed', 2); await w(1700);
+      } },
+    { title: 'Colours',
+      text: 'Pick one of the effect’s seven stored colours, any colour with +, or the rainbow button for Colourful.',
+      run: async w => {
+        await musicOff(); tab('lighting'); choose('effect', 1); await w(900);
+        ring($('color-field')); await w(700);
+        const cyan = document.querySelector('#palette .swatch[title="#00ffff"]');
+        if (cyan) cyan.click();
+        await w(2000);
+        $('color').value = '#ff8000'; $('color').dispatchEvent(new Event('change', { bubbles: true })); await w(2000);
+        if ($('colourful').getAttribute('aria-pressed') !== 'true') $('colourful').click();
+        await w(2200);
+      } },
+    { title: 'Music mode',
+      text: 'Turn on Music mode and the keys move to whatever the PC is playing. The real keyboard shows exactly the same frames as this drawing.',
+      run: async w => {
+        tab('lighting'); ring($('music-card')); await w(700);
+        if (!music.on) $('music-on').click();
+        await w(5000);
+      } },
+    { title: 'Five music styles',
+      text: 'Wave, Bars, Bloom, Stream and Pulse: the same five styles as the Redragon app, played here on a made-up 120 BPM song.',
+      run: async w => {
+        tab('lighting'); ring($('music-card'));
+        if (!music.on){ $('music-on').click(); await w(800); }
+        for (const style of ['bars', 'bloom', 'stream', 'pulse']){ choose('music-style', style); await w(3200); }
+      } },
+    { title: 'Music or effect, never both',
+      text: 'Picking an effect stops music mode and hands the keyboard back to that effect.',
+      run: async w => {
+        tab('lighting'); ring($('effects').closest('.card')); await w(800);
+        choose('effect', 18); await w(4000);
+      } },
+    { title: 'Your own layout',
+      text: 'Drag a key onto another to swap what it types, or click a key to set its Normal, Shift and Alt Gr characters.',
+      run: async w => {
+        await musicOff(); tab('layout'); await w(400);
+        ring($('layout-panel').querySelector('.card'));
+        if (!editing) setEditing(true);
+        await w(1200);
+        ring(document.querySelector('.case'));
+        byCode.KeyQ.el.classList.add('dragging'); byCode.KeyA.el.classList.add('drop-target');
+        await w(1000);
+        byCode.KeyQ.el.classList.remove('dragging'); byCode.KeyA.el.classList.remove('drop-target');
+        swapKeys('KeyQ', 'KeyA'); await w(2000);
+        swapKeys('KeyQ', 'KeyA');
+        openKeyEditor('Digit2'); await w(3400);
+        closeKeyEditor(); setEditing(false); await w(600);
+      } },
+    { title: 'A real Windows layout',
+      text: 'Export turns the layout into an installable Windows keyboard layout, built once with Microsoft Keyboard Layout Creator.',
+      run: async w => {
+        await musicOff(); tab('layout'); await w(400);
+        ring($('export-layout')); await w(900);
+        $('export-layout').click(); await w(4200);
+      } },
+    { title: 'That’s K631 Live',
+      text: 'Built by studying the K631’s own USB commands, with a safety check on every write. Restart the tour, or try the page yourself.',
+      run: async w => { tab('lighting'); top(); await w(400); ring(document.querySelector('.case')); await w(2500); } }
+  ];
+
+  // ---- Runner ----
+  function cleanup(){
+    ringed.forEach(el => el.classList.remove('tour-focus'));
+    ringed.clear();
+    if (editing && STEPS[index].title !== 'Your own layout') setEditing(false);
+  }
+
+  function render(){
+    $('tour-step').textContent = 'Step ' + (index + 1) + ' of ' + STEPS.length + (tookOver ? ' · paused while you explore' : '');
+    $('tour-title').textContent = STEPS[index].title;
+    $('tour-text').textContent = STEPS[index].text;
+    $('tour-bar').style.width = ((index + 1) / STEPS.length * 100) + '%';
+    $('tour-prev').disabled = index === 0;
+    $('tour-next').disabled = index === STEPS.length - 1;
+    $('tour-play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    $('tour-play-icon').innerHTML = playing ? '<path d="M9 6v12M15 6v12"/>' : '<path class="fill" d="M8 5l11 7-11 7z"/>';
+  }
+
+  async function go(i){
+    index = Math.max(0, Math.min(STEPS.length - 1, i));
+    const my = ++token;
+    stepDone = false;
+    cleanup();
+    render();
+    const wait = ms => new Promise((resolve, reject) => setTimeout(() => my === token ? resolve() : reject(new Cancelled()), ms));
+    try {
+      await STEPS[index].run(wait);
+      if (my !== token) return;
+      stepDone = true;
+      if (index === STEPS.length - 1){ playing = false; render(); }
+      else if (playing) go(index + 1);
+    } catch (e) {
+      if (!(e instanceof Cancelled)) console.error(e);
+    }
+  }
+
+  $('tour-prev').addEventListener('click', () => { tookOver = false; go(index - 1); });
+  $('tour-next').addEventListener('click', () => { tookOver = false; go(index + 1); });
+  $('tour-restart').addEventListener('click', () => { tookOver = false; playing = true; go(0); });
+  $('tour-play').addEventListener('click', () => {
+    tookOver = false;
+    playing = !playing;
+    render();
+    if (playing && stepDone) go(index === STEPS.length - 1 ? 0 : index + 1);
+  });
+
+  // When the viewer starts clicking around the app, the tour stops driving.
+  ['.dock', '.wrap'].forEach(sel => document.querySelector(sel).addEventListener('pointerdown', e => {
+    if (!e.isTrusted || !playing) return;
+    playing = false; tookOver = true; render();
+  }));
+
+  render();
+  setTimeout(() => go(0), 500);
+})();
+</script>
